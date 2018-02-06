@@ -16,11 +16,8 @@ from miner_config import MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
 node = Flask(__name__)
 
 target = '000000'
-<<<<<<< HEAD
 
-=======
-#test1111
->>>>>>> 6ab822bb8073afb5d65f2ec4c1e8f081212b36d4
+
 class Block:
     def __init__(self, index, timestamp, data, previous_hash, prover):
         """Return a new Block object. Each block is "chained" to its previous
