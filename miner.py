@@ -106,7 +106,7 @@ def proof_of_work(last_proof,blockchain):
         timefound = int((time.time()-start_time))
         time_printed = False
 
-    if (timefound != 0 and timefound % 60 == 0 and time_printed == False):
+    if (time_printed == False and timefound != 0 and timefound % 60 == 0):
         print ('speed - '+str(int(i/timefound)/1000)+' KH\s')
         time_printed = True
 
