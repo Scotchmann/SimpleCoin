@@ -155,7 +155,21 @@ def mine(a,blockchain,node_pending_transactions):
             # Once we find a valid proof of work, we know we can mine a block so
             # we reward the miner by adding a transaction
             #First we load all pending transactions sent to the node server
-            NODE_PENDING_TRANSACTIONS = requests.get(MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS).content
+            try:
+                NODE_PENDING_TRANSACTIONS = requests.get(MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS).content
+            except requests.exceptions.Timeout:
+            # Maybe set up for a retry, or continue in a retry loop
+                print('Timeout')
+            except requests.exceptions.TooManyRedirects:
+            # Tell the user their URL was bad and try a different one
+                print('TooManyRedirects')
+            except requests.exceptions.RequestException as e:
+            # catastrophic error. bail.
+                print(e)
+            except requests.exceptions.HTTPError as err:
+                print(err)
+            except Exception:
+                print('requests.get failed')
             NODE_PENDING_TRANSACTIONS = json.loads(NODE_PENDING_TRANSACTIONS)
             # #Then we add the mining reward
             NODE_PENDING_TRANSACTIONS.append(
