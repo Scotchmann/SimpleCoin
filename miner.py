@@ -146,6 +146,8 @@ def mine(a,blockchain,node_pending_transactions):
             last_proof = last_block.data['proof-of-work']
         except Exception:
             last_proof = 0
+
+        print('starting of a new search round\n')
         # Find the proof of work for the current block being mined
         # Note: The program will hang here until a new proof of work is found
         proof = proof_of_work(last_proof, BLOCKCHAIN)
@@ -172,9 +174,9 @@ def mine(a,blockchain,node_pending_transactions):
             package = []
             package.append('digest')
             package.append(digest)
-            print('sent ' + digest)
             a.send(package)
             requests.get(MINER_NODE_URL + "/blocks?update=" + 'syncing_digest')
+            print('synced with an external chain\n')
             continue
         else:
             # Once we find a valid proof of work, we know we can mine a block so
@@ -245,7 +247,6 @@ def mine(a,blockchain,node_pending_transactions):
                 package = []
                 package.append('digest')
                 package.append(digest)
-                print('sent ' + digest)
                 a.send(package)
                 requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
 
@@ -321,7 +322,6 @@ def get_blocks():
                 sha = hasher.sha256()
                 sha.update( str(json.dumps(received_blockchain)).encode('utf-8') )
                 digest = str(sha.hexdigest())
-                print('received ' + digest)
                 if digest == data[1]:
                     BLOCKCHAIN = received_blockchain
                 else:
