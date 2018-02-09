@@ -147,7 +147,11 @@ def mine(a,blockchain,node_pending_transactions):
         except Exception:
             last_proof = 0
 
+<<<<<<< HEAD
         print('starting a new search round\n')
+=======
+        print('starting of a new search round\n')
+>>>>>>> fe5a2cbdc34686403d9188e0bed52b1757265cfd
         # Find the proof of work for the current block being mined
         # Note: The program will hang here until a new proof of work is found
         proof = proof_of_work(last_proof, BLOCKCHAIN)
