@@ -108,7 +108,7 @@ def proof_of_work(last_proof,blockchain):
         time_printed = False
 
     if (time_printed == False and timefound != 0 and timefound % 60 == 0):
-        print ('speed - '+str(int(i/timefound)/1000)+' KH\s')
+        print ('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)))
         time_printed = True
 
     if (digest[:len(target)] == target):
@@ -118,7 +118,7 @@ def proof_of_work(last_proof,blockchain):
         timefound = int((time.time()-start_time))
 
     # Check if any node found the solution every 60 seconds
-    if (int(i%800000)==0):
+    if (int(i%200000)==0):
         # If any other node got the proof, stop searching
         new_blockchain = consensus(blockchain)
         if new_blockchain != False:
@@ -149,8 +149,28 @@ def mine(a,blockchain,node_pending_transactions):
         if proof[0] == False:
             # Update blockchain and save it to file
             BLOCKCHAIN = proof[1]
-            a.send(BLOCKCHAIN)
-            requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
+            i = 0
+            for item in BLOCKCHAIN:
+                package = []
+                package.append('chunk')
+                package.append(item)
+                package.append(i)
+                a.send(package)
+                requests.get(MINER_NODE_URL + "/blocks?update=" + 'syncing'+str(i))
+                while(a.recv() is not i):
+                    wait = True
+
+                i += 1
+
+            sha = hasher.sha256()
+            sha.update( str(json.dumps(BLOCKCHAIN)).encode('utf-8') )
+            digest = str(sha.hexdigest())
+            package = []
+            package.append('digest')
+            package.append(digest)
+            print('sent ' + digest)
+            a.send(package)
+            requests.get(MINER_NODE_URL + "/blocks?update=" + 'syncing_digest')
             continue
         else:
             # Once we find a valid proof of work, we know we can mine a block so
@@ -200,8 +220,30 @@ def mine(a,blockchain,node_pending_transactions):
               "data": new_block_data,
               "hash": last_block_hash
             }) + "\n")
-            a.send(BLOCKCHAIN)
-            requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
+
+            with eventlet.Timeout(5,False):
+                i = 0
+                for item in BLOCKCHAIN:
+                    package = []
+                    package.append('chunk')
+                    package.append(item)
+                    package.append(i)
+                    a.send(package)
+                    requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
+                    while(a.recv() is not i):
+                        wait = True
+
+                    i += 1
+
+                sha = hasher.sha256()
+                sha.update( str(json.dumps(BLOCKCHAIN)).encode('utf-8') )
+                digest = str(sha.hexdigest())
+                package = []
+                package.append('digest')
+                package.append(digest)
+                print('sent ' + digest)
+                a.send(package)
+                requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
 
 def find_new_chains():
     # Get the blockchains of every other node
@@ -260,9 +302,28 @@ def validate_transactions(transactions):
 @node.route('/blocks', methods=['GET'])
 def get_blocks():
     # Load current blockchain. Only you, should update your blockchain
-    if request.args.get("update") == MINER_ADDRESS:
+    if request.args.get("update") == MINER_ADDRESS or (str(request.args.get("update")))[:7] == 'syncing':
         global BLOCKCHAIN
-        BLOCKCHAIN = b.recv()
+        global received_blockchain
+        with eventlet.Timeout(5, False):
+            data = b.recv()
+        if data is not None:
+            if data[0] == 'chunk':
+                if data[2] == 0:
+                    received_blockchain = []
+                received_blockchain.append(data[1])
+                b.send(data[2])
+            elif data[0] == 'digest':
+                sha = hasher.sha256()
+                sha.update( str(json.dumps(received_blockchain)).encode('utf-8') )
+                digest = str(sha.hexdigest())
+                print('received ' + digest)
+                if digest == data[1]:
+                    BLOCKCHAIN = received_blockchain
+                else:
+                    print('Received blockchain is corrupted.')
+        else:
+            print('Couldn\'t get data from pipe')
         chain_to_send = BLOCKCHAIN
     else:
         # Any other node trying to connect to your node will use this
@@ -344,7 +405,7 @@ def initialize_miner():
 if __name__ == '__main__':
     welcome_msg()
     #Start mining
-    a,b=Pipe()
+    b,a=Pipe(duplex=True)
     p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
     p1.start()
     #Start server to recieve transactions
