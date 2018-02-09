@@ -112,7 +112,7 @@ def proof_of_work(last_proof,blockchain):
         time_printed = False
 
     if (time_printed == False and timefound != 0 and timefound % 60 == 0):
-        print ('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)))
+        print ('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)) +'\n')
         time_printed = True
 
     if (digest[:len(target)] == target):
@@ -146,6 +146,8 @@ def mine(a,blockchain,node_pending_transactions):
             last_proof = last_block.data['proof-of-work']
         except Exception:
             last_proof = 0
+
+        print('starting a new search round\n')
         # Find the proof of work for the current block being mined
         # Note: The program will hang here until a new proof of work is found
         proof = proof_of_work(last_proof, BLOCKCHAIN)
@@ -172,9 +174,9 @@ def mine(a,blockchain,node_pending_transactions):
             package = []
             package.append('digest')
             package.append(digest)
-            print('sent ' + digest)
             a.send(package)
             requests.get(MINER_NODE_URL + "/blocks?update=" + 'syncing_digest')
+            print('synced with an external chain\n')
             continue
         else:
             # Once we find a valid proof of work, we know we can mine a block so
@@ -245,7 +247,6 @@ def mine(a,blockchain,node_pending_transactions):
                 package = []
                 package.append('digest')
                 package.append(digest)
-                print('sent ' + digest)
                 a.send(package)
                 requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
 
@@ -321,7 +322,6 @@ def get_blocks():
                 sha = hasher.sha256()
                 sha.update( str(json.dumps(received_blockchain)).encode('utf-8') )
                 digest = str(sha.hexdigest())
-                print('received ' + digest)
                 if digest == data[1]:
                     BLOCKCHAIN = received_blockchain
                 else:
@@ -403,6 +403,8 @@ def welcome_msg():
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
 
+    print('Miner has been started at '+MINER_NODE_URL+'! Good luck!\n')
+
 def initialize_miner():
     result = consensus()
 
@@ -410,6 +412,10 @@ if __name__ == '__main__':
     welcome_msg()
     #Start mining
     b,a=Pipe(duplex=True)
+    answer = consensus(BLOCKCHAIN)
+    if answer is not False:
+        BLOCKCHAIN = answer
+        print('blockchain has been initialized with an external chain\n')
     p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
     p1.start()
     #Start server to recieve transactions
