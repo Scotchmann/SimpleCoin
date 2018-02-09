@@ -10,6 +10,7 @@ from flask import current_app
 from multiprocessing import Process, Pipe
 import ecdsa
 import random
+import eventlet
 
 from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
 
@@ -155,7 +156,15 @@ def mine(a,blockchain,node_pending_transactions):
             # Once we find a valid proof of work, we know we can mine a block so
             # we reward the miner by adding a transaction
             #First we load all pending transactions sent to the node server
-            NODE_PENDING_TRANSACTIONS = requests.get(MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS).content
+            data = None
+            with eventlet.Timeout(5, False):
+                data = requests.get(MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS).content
+            if data != None:
+                NODE_PENDING_TRANSACTIONS = data
+            else:
+                print('local request failed')
+                continue
+
             NODE_PENDING_TRANSACTIONS = json.loads(NODE_PENDING_TRANSACTIONS)
             # #Then we add the mining reward
             NODE_PENDING_TRANSACTIONS.append(
@@ -200,9 +209,16 @@ def find_new_chains():
     for node_url in PEER_NODES:
         # Get their chains using a GET request
         try:
-            block = requests.get(node_url + "/blocks").content
-            # Convert the JSON object to a Python dictionary
-            block = json.loads(block)
+            block = None
+            with eventlet.Timeout(5, False):
+                block = requests.get(node_url + "/blocks").content
+            if block is not None:
+                # Convert the JSON object to a Python dictionary
+                block = json.loads(block)
+            else:
+                print('Request to '+node_url+' has exceeded it\'s timeout.')
+                continue
+
             # Verify other node block is correct
             validated = validate_blockchain(block)
             if validated == True:
@@ -318,7 +334,7 @@ def welcome_msg():
     print("""       =========================================\n
         SIMPLE COIN v1.0.0 - BLOCKCHAIN SYSTEM\n
        =========================================\n\n
-        You can find more help at: https://github.com/cosme12/SimpleCoin\n
+        You can find more help at: https://github.com/Scotchmann/SimpleCoin\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
 
