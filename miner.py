@@ -84,13 +84,13 @@ NODE_PENDING_TRANSACTIONS = []
 
 def proof_of_work(last_proof,blockchain):
   # Create a variable that we will use to find our next proof of work
-  print(len(blockchain))
   incrementor = random.randrange(0, 500000000)
   i = 0
   found = False
   sha = hasher.sha256()
   start_time = time.time()
   timefound = 0
+  time_printed = False
   # Keep incrementing the incrementor until it's equal to a number divisible by 9
   # and the proof of work of the previous block in the chain
   #while not (incrementor % 7919 == 0 and incrementor % last_proof == 0):
@@ -150,26 +150,13 @@ def mine(a,blockchain,node_pending_transactions):
             # Update blockchain and save it to file
             BLOCKCHAIN = proof[1]
             a.send(BLOCKCHAIN)
+            requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
             continue
         else:
             # Once we find a valid proof of work, we know we can mine a block so
             # we reward the miner by adding a transaction
             #First we load all pending transactions sent to the node server
-            try:
-                NODE_PENDING_TRANSACTIONS = requests.get(MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS).content
-            except requests.exceptions.Timeout:
-            # Maybe set up for a retry, or continue in a retry loop
-                print('Timeout')
-            except requests.exceptions.TooManyRedirects:
-            # Tell the user their URL was bad and try a different one
-                print('TooManyRedirects')
-            except requests.exceptions.RequestException as e:
-            # catastrophic error. bail.
-                print(e)
-            except requests.exceptions.HTTPError as err:
-                print(err)
-            except Exception:
-                print('requests.get failed')
+            NODE_PENDING_TRANSACTIONS = requests.get(MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS).content
             NODE_PENDING_TRANSACTIONS = json.loads(NODE_PENDING_TRANSACTIONS)
             # #Then we add the mining reward
             NODE_PENDING_TRANSACTIONS.append(
@@ -223,7 +210,7 @@ def find_new_chains():
                 # Add it to our list
                 other_chains.append(block)
         except Exception:
-            print('Connection to a node failed')
+            print('Connection to '+node_url+' failed')
     return other_chains
 
 def consensus(blockchain):
@@ -346,6 +333,6 @@ if __name__ == '__main__':
     p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
     p1.start()
     #Start server to recieve transactions
-    #p2 = Process(target = node.run(host ='192.168.0.101', port =5000), args=b)
-    p2 = Process(target = node.run(host ='10.10.10.81', port =5000), args=b)
+    p2 = Process(target = node.run(host ='192.168.0.101', port =5000), args=b)
+    #p2 = Process(target = node.run(host ='10.10.10.81', port =5000), args=b)
     p2.start()
