@@ -12,6 +12,10 @@ import ecdsa
 import random
 import eventlet
 
+import logging
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+
 from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
 
 node = Flask(__name__)
