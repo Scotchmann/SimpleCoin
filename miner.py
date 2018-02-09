@@ -11,7 +11,7 @@ from multiprocessing import Process, Pipe
 import ecdsa
 import random
 
-from miner_config import MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
+from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
 
 node = Flask(__name__)
 
@@ -115,7 +115,6 @@ def proof_of_work(last_proof,blockchain):
         print("")
         print (digest + ' - ' +str(i) +' FOUND!!!')
         timefound = int((time.time()-start_time))
-        #print ('speed - '+str(int(i/timefound)/1000)+' KH\s')
 
     # Check if any node found the solution every 60 seconds
     if (int(i%800000)==0):
@@ -333,6 +332,5 @@ if __name__ == '__main__':
     p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
     p1.start()
     #Start server to recieve transactions
-    p2 = Process(target = node.run(host ='192.168.0.101', port =5000), args=b)
-    #p2 = Process(target = node.run(host ='10.10.10.81', port =5000), args=b)
+    p2 = Process(target = node.run(host = MINER_IP, port = MINER_PORT), args=b)
     p2.start()
