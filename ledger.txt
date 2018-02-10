@@ -1,2 +1,8 @@
+<<<<<<< HEAD
 q3nf394hjg-andrew2-miner-address-34nf3i4nflkn3oi:73.0
 q3nf394hjg-andrew1-miner-address-34nf3i4nflkn3oi:69.0
+=======
+q3nf394hjg-andrew2-miner-address-34nf3i4nflkn3oi:25.0
+q3nf394hjg-andrew1-miner-address-34nf3i4nflkn3oi:2.0
+
+>>>>>>> 2cad73358aa8b3815d3278b5220f789d8cdbed42
