@@ -11,6 +11,7 @@ from multiprocessing import Process, Pipe
 import ecdsa
 import random
 import eventlet
+import os.path
 
 import logging
 log = logging.getLogger('werkzeug')
@@ -68,6 +69,7 @@ def create_genesis_block():
         "timestamp": str(block.timestamp),
         "data": str(block.data),
         "hash": block.hash,
+        "previous_hash": 0,
         "prover": block.prover
     }
 
@@ -78,7 +80,6 @@ def create_genesis_block():
 
 # Node's blockchain copy
 BLOCKCHAIN = []
-BLOCKCHAIN.append(create_genesis_block())
 
 """ Store the transactions that this node has, in a list
 If the node you sent the transaction adds a block
@@ -92,7 +93,6 @@ def proof_of_work(last_proof,blockchain):
   incrementor = random.randrange(0, 500000000)
   i = 0
   found = False
-  sha = hasher.sha256()
   start_time = time.time()
   timefound = 0
   time_printed = False
@@ -102,7 +102,7 @@ def proof_of_work(last_proof,blockchain):
   while not found:
     incrementor += 1
     i += 1
-    blockchain[-1]['hash']
+    sha = hasher.sha256()
     sha.update( (str(blockchain[-1]['hash']) + str(incrementor)).encode('utf-8'))
     digest = str(sha.hexdigest())
 
@@ -112,13 +112,13 @@ def proof_of_work(last_proof,blockchain):
         time_printed = False
 
     if (time_printed == False and timefound != 0 and timefound % 60 == 0):
-        print ('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)) +'\n')
+        print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)) +'\n')
         time_printed = True
 
     if (digest[:len(target)] == target):
         found = True
         print("")
-        print (digest + ' - ' +str(i) +' FOUND!!!')
+        print(digest + ' - ' +str(i) +' FOUND!!!')
         timefound = int((time.time()-start_time))
 
     # Check if any node found the solution every 60 seconds
@@ -141,17 +141,13 @@ def mine(a,blockchain,node_pending_transactions):
         """
         # Get the last proof of work
 
-        last_block = BLOCKCHAIN[len(BLOCKCHAIN) - 1]
+        last_block = BLOCKCHAIN[-1]
         try:
             last_proof = last_block.data['proof-of-work']
         except Exception:
             last_proof = 0
 
-<<<<<<< HEAD
         print('starting a new search round\n')
-=======
-        print('starting of a new search round\n')
->>>>>>> fe5a2cbdc34686403d9188e0bed52b1757265cfd
         # Find the proof of work for the current block being mined
         # Note: The program will hang here until a new proof of work is found
         proof = proof_of_work(last_proof, BLOCKCHAIN)
@@ -220,6 +216,7 @@ def mine(a,blockchain,node_pending_transactions):
                 "timestamp": str(mined_block.timestamp),
                 "data": str(mined_block.data),
                 "hash": mined_block.hash,
+                "previous_hash": mined_block.previous_hash,
                 "prover": mined_block.prover
             }
             BLOCKCHAIN.append(block_to_add)
@@ -254,59 +251,138 @@ def mine(a,blockchain,node_pending_transactions):
                 a.send(package)
                 requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
 
-def find_new_chains():
+def find_new_chains(blockchain):
     # Get the blockchains of every other node
-    other_chains = []
+    longest_chain = blockchain
     for node_url in PEER_NODES:
         # Get their chains using a GET request
         try:
-            block = None
+            chain = None
             with eventlet.Timeout(5, False):
-                block = requests.get(node_url + "/blocks").content
-            if block is not None:
+                chain = requests.get(node_url + "/blocks").content
+            if chain is not None:
                 # Convert the JSON object to a Python dictionary
-                block = json.loads(block)
+                chain = json.loads(chain)
             else:
                 print('Request to '+node_url+' has exceeded it\'s timeout.')
                 continue
 
             # Verify other node block is correct
-            validated = validate_blockchain(block)
-            if validated == True:
-                # Add it to our list
-                other_chains.append(block)
+            if len(chain) > len(longest_chain):
+                longest_chain = chain
+
         except Exception:
             print('Connection to '+node_url+' failed')
-    return other_chains
+    return longest_chain
 
 def consensus(blockchain):
     # Get the blocks from other nodes
-    other_chains = find_new_chains()
+    longest_chain = find_new_chains(blockchain)
     # If our chain isn't longest, then we store the longest chain
     BLOCKCHAIN = blockchain
-    longest_chain = BLOCKCHAIN
-    for chain in other_chains:
-        if len(longest_chain) < len(chain):
-            longest_chain = chain
+
     # If the longest chain wasn't ours, then we set our chain to the longest
     if longest_chain == BLOCKCHAIN:
         # Keep searching for proof
         return False
-    else:
+
+    validated = validate_blockchain(longest_chain, blockchain)
+    if validated:
         # Give up searching proof, update chain and start over again
         BLOCKCHAIN = longest_chain
+        print('VALIDATED: '+str(validated))
         return BLOCKCHAIN
+    else:
+        print('VALIDATED: '+str(validated))
+        return False
 
-def validate_blockchain(block):
-    """Validate the submited chain. If hashes are not correct, return false
-    block(str): json
-    """
+def validate_blockchain(chain, blockchain):
+
+    if not os.path.isfile('ledger.txt'):
+        open('ledger.txt','a').close()
+
+    index = 0
+
+    if len(blockchain) > 0 and chain[len(blockchain)-1]['hash'] == blockchain[-1]['hash']:
+        index = len(blockchain) - 1
+    else:
+        index = 0
+
+    length_of_chain = len(chain)
+
+    while(index < length_of_chain):
+        if index == 0:
+            index += 1
+            continue
+        # 1st - verification integrity
+        sha = hasher.sha256()
+        sha.update( (str(chain[index]['previous_hash']) + str(chain[index]['prover'])).encode('utf-8'))
+        digest = str(sha.hexdigest())
+        if (digest[:len(target)] != target):
+            print('digest does not match')
+            return False
+        # 2st - verification of double spending
+        transactions = (chain[index]["data"]).replace("'", '"')
+        transactions = json.loads(transactions)
+
+        network_checked = False
+        for transaction in transactions["transactions"]:
+            f = open('ledger.txt')
+            filedata = []
+            for line in f:
+                if line != '\n':
+                    filedata.append(line)
+            f.close()
+            # Checking of the network reward
+            if transaction['from'] == 'network' and transaction['amount'] == 1:
+                if network_checked:
+                    print('network is trying to pay off more coins than it is normally set up')
+                    return False
+                network_checked = True
+            # Checking of the users spending amounts
+            transaction_from_found = False
+            if transaction['from'] != 'network':
+                for line in filedata:
+                    data = line.split(':')
+                    if data[0] == transaction['from']:
+                        transaction_from_found = True
+                        if data[1] < transaction['amount']:
+                            print('transferred amount is more than expected')
+                            return False
+                if not transaction_from_found:
+                    print('address has not been found')
+                    return False
+
+            # Checking of the users income amounts
+            transaction_to_found = False
+            counter = 0
+            length_of_filedata = len(filedata)
+            if length_of_filedata > 0:
+                while counter < length_of_filedata:
+                    data = filedata[counter].split(':')
+                    if transaction['to'] == data[0]:
+                        transaction_to_found = True
+                        amount = float(data[1])
+                        amount += float(transaction['amount'])
+                        data[1] = amount
+                        filedata[counter] = str(data[0]) + ':' +str(data[1])
+                    counter += 1
+            if transaction_to_found == False:
+                filedata.append(str(transaction['to'])+':'+str(transaction['amount']))
+
+            f = open('ledger.txt', 'w')
+            line_counter = 0
+            length_of_filedata = len(filedata)
+
+            for line in filedata:
+                f.write(line + '\n')
+
+            f.close()
+
+        index += 1
+
     return True
 
-def validate_transactions(transactions):
-    for transaction in transactions:
-        print(transaction)
-    return True
 
 @node.route('/blocks', methods=['GET'])
 def get_blocks():
@@ -344,6 +420,7 @@ def get_blocks():
             "timestamp": str(block['timestamp']),
             "data": str(block['data']),
             "hash": block['hash'],
+            "previous_hash": block['previous_hash'],
             "prover": block['prover']
         }
         chain_to_send_json.append(block)
@@ -406,7 +483,6 @@ def welcome_msg():
         You can find more help at: https://github.com/Scotchmann/SimpleCoin\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
-
     print('Miner has been started at '+MINER_NODE_URL+'! Good luck!\n')
 
 def initialize_miner():
@@ -417,11 +493,16 @@ if __name__ == '__main__':
     #Start mining
     b,a=Pipe(duplex=True)
     answer = consensus(BLOCKCHAIN)
+
     if answer is not False:
         BLOCKCHAIN = answer
         print('blockchain has been initialized with an external chain\n')
+    else:
+        BLOCKCHAIN.append(create_genesis_block())
+
     p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
     p1.start()
     #Start server to recieve transactions
     p2 = Process(target = node.run(host = MINER_IP, port = MINER_PORT), args=b)
+
     p2.start()
