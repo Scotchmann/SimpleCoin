@@ -458,8 +458,6 @@ def transaction():
         new_txion = request.get_json()
         # Then we add the transaction to our list
         if validate_signature(new_txion['from'],new_txion['signature'],new_txion['message']):
-            f = open('NODE_PENDING_TRANSACTIONS.txt', 'w')
-            f.write(new_txion['from'] + ' ' + new_txion['to'] + ' ' + new_txion['amount'])
             NODE_PENDING_TRANSACTIONS.append(new_txion)
             # Because the transaction was successfully
             # submitted, we log it to our console
