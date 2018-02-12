@@ -75,9 +75,6 @@ def create_genesis_block():
 
     return block
 
-
-
-
 # Node's blockchain copy
 BLOCKCHAIN = []
 
@@ -163,7 +160,7 @@ def mine(a,blockchain,node_pending_transactions):
                 package.append(i)
                 a.send(package)
                 requests.get(MINER_NODE_URL + "/blocks?update=" + 'syncing'+str(i))
-                while(a.recv() is not i):
+                while(a.recv() != i):
                     wait = True
 
                 i += 1
@@ -184,14 +181,18 @@ def mine(a,blockchain,node_pending_transactions):
             #First we load all pending transactions sent to the node server
             data = None
             with eventlet.Timeout(5, False):
-                data = requests.get(MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS).content
-            if data != None:
-                NODE_PENDING_TRANSACTIONS = data
+                url     = MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS
+                payload = {"source": "miner", "address": MINER_ADDRESS}
+                headers = {"Content-Type": "application/json"}
+
+                data = requests.post(url, json=payload, headers=headers).text
+
+            if data is not None:
+                NODE_PENDING_TRANSACTIONS = json.loads(data)
             else:
                 print('local request failed')
                 continue
 
-            NODE_PENDING_TRANSACTIONS = json.loads(NODE_PENDING_TRANSACTIONS)
             # #Then we add the mining reward
             NODE_PENDING_TRANSACTIONS.append(
             { "from": "network",
@@ -242,7 +243,7 @@ def mine(a,blockchain,node_pending_transactions):
                     package.append(i)
                     a.send(package)
                     requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
-                    while(a.recv() is not i):
+                    while(a.recv() != i):
                         wait = True
 
                     i += 1
@@ -446,7 +447,6 @@ def get_blocks():
     chain_to_send = json.dumps(chain_to_send_json)
     return chain_to_send
 
-
 @node.route('/txion', methods=['GET','POST'])
 def transaction():
     """Each transaction sent to this node gets validated and submitted.
@@ -456,27 +456,30 @@ def transaction():
     if request.method == 'POST':
         # On each new POST request, we extract the transaction data
         new_txion = request.get_json()
-        # Then we add the transaction to our list
-        if validate_signature(new_txion['from'],new_txion['signature'],new_txion['message']):
-            NODE_PENDING_TRANSACTIONS.append(new_txion)
-            # Because the transaction was successfully
-            # submitted, we log it to our console
-            print("New transaction")
-            print("FROM: {0}".format(new_txion['from']))
-            print("TO: {0}".format(new_txion['to']))
-            print("AMOUNT: {0}\n".format(new_txion['amount']))
-            # Then we let the client know it worked out
-            return "Transaction submission successful\n"
+        if new_txion['source'] == "wallet":
+            # Then we add the transaction to our list
+            if validate_signature(new_txion['from'],new_txion['signature'],new_txion['message']):
+                NODE_PENDING_TRANSACTIONS.append(new_txion)
+                # Because the transaction was successfully
+                # submitted, we log it to our console
+                print("New transaction")
+                print("FROM: {0}".format(new_txion['from']))
+                print("TO: {0}".format(new_txion['to']))
+                print("AMOUNT: {0}\n".format(new_txion['amount']))
+                # Then we let the client know it worked out
+                return "Transaction submission successful\n"
+            else:
+                return "Transaction submission failed. Wrong signature\n"
+
+        #Send pending transactions to the mining process
+        elif new_txion['source'] == "miner":
+
+            pending = json.dumps(NODE_PENDING_TRANSACTIONS)
+            # Empty transaction list
+            NODE_PENDING_TRANSACTIONS[:] = []
+            return pending
         else:
-            return "Transaction submission failed. Wrong signature\n"
-    #Send pending transactions to the mining process
-    elif request.method == 'GET' and request.args.get("update") == MINER_ADDRESS:
-        pending = json.dumps(NODE_PENDING_TRANSACTIONS)
-        # Empty transaction list
-        NODE_PENDING_TRANSACTIONS[:] = []
-        return pending
-    else:
-        return 'Arguments not specified'
+            return 'Arguments not specified'
 
 def validate_signature(public_key,signature,message):
     """Verify if the signature is correct. This is used to prove if
@@ -509,7 +512,7 @@ if __name__ == '__main__':
     b,a=Pipe(duplex=True)
     answer = consensus(BLOCKCHAIN)
 
-    if answer is not False:
+    if answer != False:
         BLOCKCHAIN = answer
         print('blockchain has been initialized with an external chain\n')
     else:

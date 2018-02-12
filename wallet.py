@@ -77,7 +77,7 @@ def send_transaction(addr_from,private_key,addr_to,amount):
     if len(private_key) == 64:
         signature,message = sign_ECDSA_msg(private_key)
         url     = 'http://localhost:5000/txion'
-        payload = {"from": addr_from, "to": addr_to, "amount": amount, "signature": signature.decode(), "message": message}
+        payload = {"source": "wallet","from": addr_from, "to": addr_to, "amount": amount, "signature": signature.decode(), "message": message}
         headers = {"Content-Type": "application/json"}
 
         res = requests.post(url, json=payload, headers=headers)

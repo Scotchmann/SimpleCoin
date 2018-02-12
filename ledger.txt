@@ -1,2 +1,5 @@
-q3nf394hjg-andrew2-miner-address-34nf3i4nflkn3oi:178.0
-q3nf394hjg-andrew1-miner-address-34nf3i4nflkn3oi:70.0
+q3nf394hjg-andrew1-miner-address-34nf3i4nflkn3oi:55.0
+i7YqTe:4.0
+i7Y/qTe:3.0
+i7YqTeslTO9fMpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWvWlEbzeReIzHG43TxkAnlw5w==:67.0
+i7YqTe+slTO9f+MpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWvWlEbzeReIzHG43TxkAnlw5w==:1
