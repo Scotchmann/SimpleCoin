@@ -242,8 +242,9 @@ def mine(a,blockchain,node_pending_transactions):
                     package.append(item)
                     package.append(i)
                     a.send(package)
-                    requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
+                    requests.get(MINER_NODE_URL + "/blocks?update=" + "internal_syncing")
                     while(a.recv() != i):
+                        print('mine3')
                         wait = True
 
                     i += 1
@@ -255,7 +256,7 @@ def mine(a,blockchain,node_pending_transactions):
                 package.append('digest')
                 package.append(digest)
                 a.send(package)
-                requests.get(MINER_NODE_URL + "/blocks?update=" + MINER_ADDRESS)
+                requests.get(MINER_NODE_URL + "/blocks?update=" + "internal_syncing")
 
 def find_new_chains(blockchain):
     # Get the blockchains of every other node
@@ -293,12 +294,14 @@ def consensus(blockchain):
         return False
 
     validated = validate_blockchain(longest_chain, blockchain)
+    print('VALIDATED: '+str(validated))
     if validated:
         # Give up searching proof, update chain and start over again
         BLOCKCHAIN = longest_chain
-        print('VALIDATED: '+str(validated))
+        print('external blockcain passed validation\n')
         return BLOCKCHAIN
     else:
+        print('external blockcain did not pass validation\n')
         return False
 
 def validate_blockchain(chain, blockchain):
@@ -363,6 +366,7 @@ def validate_transactions(transactions):
                 data = line.split(':')
                 if data[0] == transaction['from']:
                     transaction_from_found = True
+                    print('TRANSACTION ' + str(data[1]) + ' ' + str(transaction['amount']))
                     if data[1] < transaction['amount']:
                         print('transferred amount is more than expected')
                         return False
@@ -402,10 +406,10 @@ def validate_transactions(transactions):
 
     return True
 
-@node.route('/blocks', methods=['GET'])
+@node.route('/blocks', methods=['GET','POST'])
 def get_blocks():
     # Load current blockchain. Only you, should update your blockchain
-    if request.args.get("update") == MINER_ADDRESS or (str(request.args.get("update")))[:7] == 'syncing':
+    if request.args.get("update") == 'internal_syncing' or (str(request.args.get("update")))[:7] == 'syncing':
         global BLOCKCHAIN
         global received_blockchain
         with eventlet.Timeout(5, False):

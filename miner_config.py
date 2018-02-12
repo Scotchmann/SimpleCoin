@@ -3,6 +3,7 @@ more details.
 """
 
 # Write your generated adress here. All coins mined will go to this address
+#MINER_ADDRESS = "i7YqTeslTO9fMpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWvWlEbzeReIzHG43TxkAnlw5w=="
 MINER_ADDRESS = "i7YqTe+slTO9f+MpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWvWlEbzeReIzHG43TxkAnlw5w=="
 
 #MINER_IP = "10.10.10.100"
