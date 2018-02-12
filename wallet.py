@@ -22,7 +22,7 @@ import requests
 import time
 import base64
 import ecdsa
-
+from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
 
 def welcome_msg():
     print("""       =========================================\n
@@ -38,15 +38,21 @@ def wallet():
     while response not in ["1","2","3"]:
         response = input("""What do you want to do?
         1. Generate new wallet
-        2. Send coins to another wallet
-        3. Check transactions\n""")
-    if response in "1":
+        2  Check balance
+        3. Send coins to another wallet
+        4. Check transactions\n""")
+    if response == "1":
         # Generate new wallet
         print("""=========================================\n
 IMPORTANT: save this credentials or you won't be able to recover your wallet\n
 =========================================\n""")
+
         generate_ECDSA_keys()
-    elif response in "2":
+    elif response == "2":
+
+        wallet_to_check = input("Introduce your wallet address (public key)\n")
+
+    elif response == "3":
         addr_from = input("From: introduce your wallet address (public key)\n")
         private_key = input("Introduce your private key\n")
         addr_to = input("To: introduce destination wallet address\n")
@@ -57,7 +63,7 @@ IMPORTANT: save this credentials or you won't be able to recover your wallet\n
         response = input("y/n\n")
         if response.lower() == "y":
             send_transaction(addr_from,private_key,addr_to,amount)
-    elif response == "3":
+    elif response == "4":
         check_transactions()
 
 
@@ -69,15 +75,15 @@ def send_transaction(addr_from,private_key,addr_to,amount):
     before claiming it as approved!
     """
     #for fast debuging REMOVE LATER
-    #private_key="181f2448fa4636315032e15bb9cbc3053e10ed062ab0b2680a37cd8cb51f53f2"
-    #amount="3000"
-    #addr_from="SD5IZAuFixM3PTmkm5ShvLm1tbDNOmVlG7tg6F5r7VHxPNWkNKbzZfa+JdKmfBAIhWs9UKnQLOOL1U+R3WxcsQ=="
-    #addr_to="SD5IZAuFixM3PTmkm5ShvLm1tbDNOmVlG7tg6F5r7VHxPNWkNKbzZfa+JdKmfBAIhWs9UKnQLOOL1U+R3WxcsQ=="
+    private_key="d9319751ce59ff9450f4c8b469738227bb34c26a9e94283e123c0be6fa494466"
+    amount="5"
+    addr_from="i7YqTe+slTO9f+MpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWvWlEbzeReIzHG43TxkAnlw5w=="
+    addr_to="i7YqTe+slTO9f+MpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWvWlNEWADRESS"
 
     if len(private_key) == 64:
         signature,message = sign_ECDSA_msg(private_key)
-        url     = 'http://localhost:5000/txion'
-        payload = {"source": "wallet","from": addr_from, "to": addr_to, "amount": amount, "signature": signature.decode(), "message": message}
+        url     = MINER_NODE_URL+'/txion'
+        payload = {"source": "wallet","option":"newtx", "from": addr_from, "to": addr_to, "amount": amount, "signature": signature.decode(), "message": message}
         headers = {"Content-Type": "application/json"}
 
         res = requests.post(url, json=payload, headers=headers)
@@ -89,8 +95,16 @@ def check_transactions():
     """Retrieve the entire blockchain. With this you can check your
     wallets balance. If the blockchain is to long, it may take some time to load.
     """
-    res = requests.get('http://localhost:5000/blocks')
+    res = requests.get(MINER_NODE_URL+'/blocks')
     print(res.text)
+
+def check_balance(wallet_to_check):
+    url     = MINER_NODE_URL+'/txion'
+    payload = {"source": "wallet", "option":"balance", "wallet": wallet_to_check}
+    headers = {"Content-Type": "application/json"}
+
+    res = requests.post(url, json=payload, headers=headers)
+    print('Your balance is: ' + str(float(res.text)))
 
 def generate_ECDSA_keys():
     """This function takes care of creating your private and public (your address) keys.

@@ -182,7 +182,7 @@ def mine(a,blockchain,node_pending_transactions):
             data = None
             with eventlet.Timeout(5, False):
                 url     = MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS
-                payload = {"source": "miner", "address": MINER_ADDRESS}
+                payload = {"source": "miner", "option":"pendingtxs", "address": MINER_ADDRESS}
                 headers = {"Content-Type": "application/json"}
 
                 data = requests.post(url, json=payload, headers=headers).text
@@ -306,16 +306,17 @@ def consensus(blockchain):
 
 def validate_blockchain(chain, blockchain):
 
-    if not os.path.isfile('ledger.txt'):
-        open('ledger.txt','a').close()
-
     index = 0
 
-    if len(blockchain) > 0 and chain[len(blockchain)-1]['hash'] == blockchain[-1]['hash']:
-        index = len(blockchain) - 1
+    if len(blockchain) > 1 and chain[len(blockchain)-1]['hash'] == blockchain[-1]['hash']:
+        index = len(blockchain)
     else:
         index = 0
         open('ledger.txt', 'w').close()
+
+    if not os.path.isfile('ledger.txt'):
+        open('ledger.txt','a').close()
+        index = 0
 
     length_of_chain = len(chain)
 
@@ -361,15 +362,21 @@ def validate_transactions(transactions):
 
         # Checking of the users spending amounts
         transaction_from_found = False
+        counter = 0
+        length_of_filedata = len(filedata)
         if transaction['from'] != 'network':
-            for line in filedata:
-                data = line.split(':')
+            while counter < length_of_filedata:
+                data = filedata[counter].split(':')
                 if data[0] == transaction['from']:
                     transaction_from_found = True
-                    print('TRANSACTION ' + str(data[1]) + ' ' + str(transaction['amount']))
                     if float(data[1]) < float(transaction['amount']):
                         print('transferred amount is more than expected')
                         return False
+                    amount = float(data[1])
+                    amount -= float(transaction['amount'])
+                    data[1] = amount
+                    filedata[counter] = str(data[0]) + ':' +str(float(data[1]))
+                counter += 1
             if not transaction_from_found:
                 print('address has not been found')
                 return False
@@ -386,7 +393,7 @@ def validate_transactions(transactions):
                     amount = float(data[1])
                     amount += float(transaction['amount'])
                     data[1] = amount
-                    filedata[counter] = str(data[0]) + ':' +str(data[1])
+                    filedata[counter] = str(data[0]) + ':' +str(float(data[1]))
                 counter += 1
         if transaction_to_found == False:
             filedata.append(str(transaction['to'])+':'+str(transaction['amount']))
@@ -403,7 +410,6 @@ def validate_transactions(transactions):
                     f.write(line)
 
         f.close()
-
     return True
 
 @node.route('/blocks', methods=['GET','POST'])
@@ -460,7 +466,7 @@ def transaction():
     if request.method == 'POST':
         # On each new POST request, we extract the transaction data
         new_txion = request.get_json()
-        if new_txion['source'] == "wallet":
+        if new_txion['source'] == "wallet" and new_txion['option'] == "newtx":
             # Then we add the transaction to our list
             if validate_signature(new_txion['from'],new_txion['signature'],new_txion['message']):
                 NODE_PENDING_TRANSACTIONS.append(new_txion)
@@ -475,8 +481,26 @@ def transaction():
             else:
                 return "Transaction submission failed. Wrong signature\n"
 
+        elif new_txion['source'] == "wallet" and new_txion['option'] == "balance":
+             f = open('ledger.txt')
+             filedata = []
+             for line in f:
+                 if line != '\n':
+                     filedata.append(line)
+             f.close()
+             wallet_found = False
+             for line in filedata:
+                 data = line.split(':')
+                 if data[0] == new_txion['wallet']:
+                     wallet_found = True
+                     return data[1]
+             if wallet_found == False:
+                 print('It seems that there were no transactions to this wallet so far.')
+                 return 0
+
+
         #Send pending transactions to the mining process
-        elif new_txion['source'] == "miner":
+        elif new_txion['source'] == "miner" and new_txion["option"] == "pendingtxs":
 
             pending = json.dumps(NODE_PENDING_TRANSACTIONS)
             # Empty transaction list
