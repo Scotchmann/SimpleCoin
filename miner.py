@@ -495,8 +495,7 @@ def transaction():
                      wallet_found = True
                      return data[1]
              if wallet_found == False:
-                 print('It seems that there were no transactions to this wallet so far.')
-                 return 0
+                 return "0"
 
 
         #Send pending transactions to the mining process
