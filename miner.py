@@ -353,7 +353,7 @@ def validate_transactions(transactions):
         f.close()
 
         # Checking of the network reward
-        if transaction['from'] == 'network' and transaction['amount'] == 1:
+        if transaction['from'] == 'network' and float(transaction['amount']) == 1:
             if network_checked:
                 print('network is trying to pay off more coins than it is normally set up')
                 return False
@@ -367,7 +367,7 @@ def validate_transactions(transactions):
                 if data[0] == transaction['from']:
                     transaction_from_found = True
                     print('TRANSACTION ' + str(data[1]) + ' ' + str(transaction['amount']))
-                    if data[1] < transaction['amount']:
+                    if float(data[1]) < float(transaction['amount']):
                         print('transferred amount is more than expected')
                         return False
             if not transaction_from_found:
