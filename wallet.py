@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """This is going to be your wallet. Here you can do several things:
 - Generate a new address (public and private key). You are going
 to use this address (public key) to send or recieve any transactions. You can
@@ -51,6 +53,7 @@ IMPORTANT: save this credentials or you won't be able to recover your wallet\n
     elif response == "2":
 
         wallet_to_check = input("Introduce your wallet address (public key)\n")
+        check_balance(wallet_to_check)
 
     elif response == "3":
         addr_from = input("From: introduce your wallet address (public key)\n")

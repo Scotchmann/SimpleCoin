@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import time
 import hashlib as hasher
 import json
@@ -200,14 +201,12 @@ def mine(a,blockchain,node_pending_transactions):
               "amount": 1 }
             )
 
-            if not validate_transactions(list(NODE_PENDING_TRANSACTIONS)):
-                print('Transactions were not approved. New block was refused.')
-                continue
+            NODE_PENDING_TRANSACTIONS = validate_transactions(list(NODE_PENDING_TRANSACTIONS))
 
             # Now we can gather the data needed to create the new block
             new_block_data = {
             "proof-of-work": proof[0],
-            "transactions": list(NODE_PENDING_TRANSACTIONS)
+            "transactions": NODE_PENDING_TRANSACTIONS
             }
             new_block_index = int(last_block['index']) + 1
             new_block_timestamp = time.time()
@@ -244,7 +243,6 @@ def mine(a,blockchain,node_pending_transactions):
                     a.send(package)
                     requests.get(MINER_NODE_URL + "/blocks?update=" + "internal_syncing")
                     while(a.recv() != i):
-                        print('mine3')
                         wait = True
 
                     i += 1
@@ -332,10 +330,10 @@ def validate_blockchain(chain, blockchain):
             print('digest does not match')
             return False
         # 2st - verification of double spending
-        transactions = (chain[index]["data"]).replace("'", '"')
-        transactions = json.loads(transactions)
+        #transactions = (chain[index]["data"]).replace("'", '"')
+        transactions = json.loads((chain[index]["data"]).replace("'", '"'))
 
-        if not validate_transactions(transactions["transactions"]):
+        if len(validate_transactions(transactions["transactions"])) != len(transactions["transactions"]):
             return False
 
         index += 1
@@ -345,7 +343,10 @@ def validate_blockchain(chain, blockchain):
 def validate_transactions(transactions):
 
     network_checked = False
+    valid_transactions = []
+
     for transaction in transactions:
+        flawed = False
         f = open('ledger.txt')
         filedata = []
         for line in f:
@@ -356,8 +357,10 @@ def validate_transactions(transactions):
         # Checking of the network reward
         if transaction['from'] == 'network' and float(transaction['amount']) == 1:
             if network_checked:
-                print('network is trying to pay off more coins than it is normally set up')
-                return False
+                print('FLAWED!!! ' +str(transaction['from']) + ' ' + transaction['to'] + ' ' + transaction['amount'] )
+                print('network is trying to pay off more coins than it is normally set up\n')
+                flawed = True
+                continue
             network_checked = True
 
         # Checking of the users spending amounts
@@ -365,13 +368,15 @@ def validate_transactions(transactions):
         counter = 0
         length_of_filedata = len(filedata)
         if transaction['from'] != 'network':
-            while counter < length_of_filedata:
+            while counter < length_of_filedata and not flawed:
                 data = filedata[counter].split(':')
                 if data[0] == transaction['from']:
                     transaction_from_found = True
                     if float(data[1]) < float(transaction['amount']):
+                        print('FLAWED!!! ' +str(transaction['from']) + ' ' + transaction['to'] + ' ' + transaction['amount'] )
                         print('transferred amount is more than expected')
-                        return False
+                        flawed = True
+                        break
                     amount = float(data[1])
                     amount -= float(transaction['amount'])
                     data[1] = amount
@@ -379,8 +384,11 @@ def validate_transactions(transactions):
                 counter += 1
             if not transaction_from_found:
                 print('address has not been found')
-                return False
+                flawed = True
+                continue
 
+        if flawed:
+            continue
         # Checking of the users income amounts
         transaction_to_found = False
         counter = 0
@@ -410,7 +418,10 @@ def validate_transactions(transactions):
                     f.write(line)
 
         f.close()
-    return True
+
+        valid_transactions.append(transaction)
+
+    return valid_transactions
 
 @node.route('/blocks', methods=['GET','POST'])
 def get_blocks():
