@@ -404,7 +404,7 @@ def validate_transactions(transactions):
                     filedata[counter] = str(data[0]) + ':' +str(float(data[1]))
                 counter += 1
         if transaction_to_found == False:
-            filedata.append(str(transaction['to'])+':'+str(transaction['amount']))
+            filedata.append(str(transaction['to'])+':'+str(float(transaction['amount'])))
 
         f = open('ledger.txt', 'w')
         line_counter = 0
