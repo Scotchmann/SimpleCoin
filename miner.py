@@ -24,7 +24,6 @@ node = Flask(__name__)
 
 target = '000000'
 
-
 class Block:
     def __init__(self, index, timestamp, data, previous_hash, prover):
         """Return a new Block object. Each block is "chained" to its previous
@@ -98,34 +97,34 @@ def proof_of_work(last_proof,blockchain):
   # and the proof of work of the previous block in the chain
   #while not (incrementor % 7919 == 0 and incrementor % last_proof == 0):
   while not found:
-    incrementor += 1
-    i += 1
-    sha = hasher.sha256()
-    sha.update( (str(blockchain[-1]['hash']) + str(incrementor)).encode('utf-8'))
-    digest = str(sha.hexdigest())
+      incrementor += 1
+      i += 1
+      sha = hasher.sha256()
+      sha.update( (str(blockchain[-1]['hash']) + str(incrementor)).encode('utf-8'))
+      digest = str(sha.hexdigest())
 
 
-    if (timefound != int((time.time()-start_time))):
-        timefound = int((time.time()-start_time))
-        time_printed = False
+      if (timefound != int((time.time()-start_time))):
+          timefound = int((time.time()-start_time))
+          time_printed = False
 
-    if (time_printed == False and timefound != 0 and timefound % 60 == 0):
-        print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)) +'\n')
-        time_printed = True
+      if (time_printed == False and timefound != 0 and timefound % 60 == 0):
+          print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)) +'\n')
+          time_printed = True
 
-    if (digest[:len(target)] == target):
-        found = True
-        print("")
-        print(digest + ' - ' +str(i) +' FOUND!!!')
-        timefound = int((time.time()-start_time))
+      if (digest[:len(target)] == target):
+          found = True
+          print("")
+          print(digest + ' - ' +str(i) +' FOUND!!!')
+          timefound = int((time.time()-start_time))
 
-    # Check if any node found the solution every 60 seconds
-    if (int(i%200000)==0):
-        # If any other node got the proof, stop searching
-        new_blockchain = consensus(blockchain)
-        if new_blockchain != False:
-            #(False:another node got proof first, new blockchain)
-            return (False,new_blockchain)
+      # Check if any node found the solution every 60 seconds
+      if (int(i%200000)==0):
+          # If any other node got the proof, stop searching
+          new_blockchain = consensus(blockchain)
+          if new_blockchain != False:
+              #(False:another node got proof first, new blockchain)
+              return (False,new_blockchain)
   # Once that number is found, we can return it as a proof of our work
   return (incrementor,blockchain)
 
@@ -134,7 +133,7 @@ def mine(a,blockchain,node_pending_transactions):
     NODE_PENDING_TRANSACTIONS = node_pending_transactions
     while True:
         """Mining is the only way that new coins can be created.
-        In order to prevent to many coins to be created, the process
+        In order to prevent too many coins to be created, the process
         is slowed down by a proof of work algorithm.
         """
         # Get the last proof of work
@@ -187,6 +186,7 @@ def mine(a,blockchain,node_pending_transactions):
                 headers = {"Content-Type": "application/json"}
 
                 data = requests.post(url, json=payload, headers=headers).text
+                eventlet.sleep(0)
 
             if data is not None:
                 NODE_PENDING_TRANSACTIONS = json.loads(data)
@@ -255,6 +255,7 @@ def mine(a,blockchain,node_pending_transactions):
                 package.append(digest)
                 a.send(package)
                 requests.get(MINER_NODE_URL + "/blocks?update=" + "internal_syncing")
+                eventlet.sleep(0)
 
 def find_new_chains(blockchain):
     # Get the blockchains of every other node
@@ -265,6 +266,7 @@ def find_new_chains(blockchain):
             chain = None
             with eventlet.Timeout(5, False):
                 chain = requests.get(node_url + "/blocks").content
+                eventlet.sleep(0)
             if chain is not None:
                 # Convert the JSON object to a Python dictionary
                 chain = json.loads(chain)
@@ -302,12 +304,12 @@ def consensus(blockchain):
         print('external blockcain did not pass validation\n')
         return False
 
-def validate_blockchain(chain, blockchain):
+def validate_blockchain(alien_chain, my_chain):
 
     index = 0
 
-    if len(blockchain) > 1 and chain[len(blockchain)-1]['hash'] == blockchain[-1]['hash']:
-        index = len(blockchain)
+    if len(my_chain) > 1 and alien_chain[len(my_chain)-1]['hash'] == my_chain[-1]['hash']:
+        index = len(my_chain)
     else:
         index = 0
         open('ledger.txt', 'w').close()
@@ -316,7 +318,7 @@ def validate_blockchain(chain, blockchain):
         open('ledger.txt','a').close()
         index = 0
 
-    length_of_chain = len(chain)
+    length_of_chain = len(alien_chain)
 
     while(index < length_of_chain):
         if index == 0:
@@ -324,14 +326,14 @@ def validate_blockchain(chain, blockchain):
             continue
         # 1st - verification integrity
         sha = hasher.sha256()
-        sha.update( (str(chain[index]['previous_hash']) + str(chain[index]['prover'])).encode('utf-8'))
+        sha.update( (str(alien_chain[index]['previous_hash']) + str(alien_chain[index]['prover'])).encode('utf-8'))
         digest = str(sha.hexdigest())
         if (digest[:len(target)] != target):
             print('digest does not match')
             return False
         # 2st - verification of double spending
         #transactions = (chain[index]["data"]).replace("'", '"')
-        transactions = json.loads((chain[index]["data"]).replace("'", '"'))
+        transactions = json.loads((alien_chain[index]["data"]).replace("'", '"'))
 
         if len(validate_transactions(transactions["transactions"])) != len(transactions["transactions"]):
             return False
@@ -367,6 +369,7 @@ def validate_transactions(transactions):
         transaction_from_found = False
         counter = 0
         length_of_filedata = len(filedata)
+
         if transaction['from'] != 'network':
             while counter < length_of_filedata and not flawed:
                 data = filedata[counter].split(':')
@@ -393,6 +396,7 @@ def validate_transactions(transactions):
         transaction_to_found = False
         counter = 0
         length_of_filedata = len(filedata)
+
         if length_of_filedata > 0:
             while counter < length_of_filedata:
                 data = filedata[counter].split(':')
@@ -403,6 +407,7 @@ def validate_transactions(transactions):
                     data[1] = amount
                     filedata[counter] = str(data[0]) + ':' +str(float(data[1]))
                 counter += 1
+
         if transaction_to_found == False:
             filedata.append(str(transaction['to'])+':'+str(float(transaction['amount'])))
 
@@ -431,6 +436,7 @@ def get_blocks():
         global received_blockchain
         with eventlet.Timeout(5, False):
             data = b.recv()
+            eventlet.sleep(0)
         if data is not None:
             if data[0] == 'chunk':
                 if data[2] == 0:
