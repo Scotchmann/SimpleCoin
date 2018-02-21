@@ -4,23 +4,21 @@ import hashlib as hasher
 import json
 import requests
 import base64
-from flask import Flask
-from flask import request
-from flask import g
-from flask import current_app
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Lock
 import ecdsa
 import random
 import eventlet
 import os.path
-
+import socket
+from json_tricks import dumps, loads
 import logging
-log = logging.getLogger('werkzeug')
+
+log = logging.getLogger('requests')
 log.setLevel(logging.ERROR)
 
 from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
 
-node = Flask(__name__)
+mutex = Lock()
 
 target = '000000'
 
@@ -64,15 +62,6 @@ def create_genesis_block():
         {"proof-of-work": 9,"transactions": None},
          "0", "0")
 
-    block = {
-        "index": str(block.index),
-        "timestamp": str(block.timestamp),
-        "data": str(block.data),
-        "hash": block.hash,
-        "previous_hash": 0,
-        "prover": block.prover
-    }
-
     return block
 
 # Node's blockchain copy
@@ -93,19 +82,17 @@ def proof_of_work(last_proof,blockchain):
   start_time = time.time()
   timefound = 0
   time_printed = False
-  # Keep incrementing the incrementor until it's equal to a number divisible by 9
-  # and the proof of work of the previous block in the chain
-  #while not (incrementor % 7919 == 0 and incrementor % last_proof == 0):
+  bhash = str(blockchain[-1].hash)
+
   while not found:
       incrementor += 1
       i += 1
       sha = hasher.sha256()
-      sha.update( (str(blockchain[-1]['hash']) + str(incrementor)).encode('utf-8'))
+      sha.update( (bhash + str(incrementor)).encode('utf-8'))
       digest = str(sha.hexdigest())
 
-
-      if (timefound != int((time.time()-start_time))):
-          timefound = int((time.time()-start_time))
+      if timefound != int(time.time()-start_time):
+          timefound = int(time.time()-start_time)
           time_printed = False
 
       if (time_printed == False and timefound != 0 and timefound % 60 == 0):
@@ -119,17 +106,19 @@ def proof_of_work(last_proof,blockchain):
           timefound = int((time.time()-start_time))
 
       # Check if any node found the solution every 60 seconds
-      if (int(i%200000)==0):
-          # If any other node got the proof, stop searching
-          new_blockchain = consensus(blockchain)
-          if new_blockchain != False:
-              #(False:another node got proof first, new blockchain)
-              return (False,new_blockchain)
+      # if (int(i%200000)==0):
+      #     # If any other node got the proof, stop searching
+      #     new_blockchain = consensus()
+      #     if new_blockchain != False:
+      #         #(False:another node got proof first, new blockchain)
+      #         return (False,new_blockchain)
   # Once that number is found, we can return it as a proof of our work
   return (incrementor,blockchain)
 
 def mine(a,blockchain,node_pending_transactions):
-    BLOCKCHAIN = blockchain
+    global BLOCKCHAIN
+    with mutex:
+        BLOCKCHAIN = blockchain
     NODE_PENDING_TRANSACTIONS = node_pending_transactions
     while True:
         """Mining is the only way that new coins can be created.
@@ -137,8 +126,8 @@ def mine(a,blockchain,node_pending_transactions):
         is slowed down by a proof of work algorithm.
         """
         # Get the last proof of work
-
-        last_block = BLOCKCHAIN[-1]
+        with mutex:
+            last_block = BLOCKCHAIN[-1]
         try:
             last_proof = last_block.data['proof-of-work']
         except Exception:
@@ -151,80 +140,37 @@ def mine(a,blockchain,node_pending_transactions):
         # If we didn't guess the proof, start mining again
         if proof[0] == False:
             # Update blockchain and save it to file
-            BLOCKCHAIN = proof[1]
-            i = 0
-            for item in BLOCKCHAIN:
-                package = []
-                package.append('chunk')
-                package.append(item)
-                package.append(i)
-                a.send(package)
-                requests.get(MINER_NODE_URL + "/blocks?update=" + 'syncing'+str(i))
-                while(a.recv() != i):
-                    wait = True
+            with mutex:
+                BLOCKCHAIN = proof[1]
 
-                i += 1
-
-            sha = hasher.sha256()
-            sha.update( str(json.dumps(BLOCKCHAIN)).encode('utf-8') )
-            digest = str(sha.hexdigest())
-            package = []
-            package.append('digest')
-            package.append(digest)
-            a.send(package)
-            requests.get(MINER_NODE_URL + "/blocks?update=" + 'syncing_digest')
-            print('synced with an external chain\n')
-            continue
         else:
             # Once we find a valid proof of work, we know we can mine a block so
             # we reward the miner by adding a transaction
-            #First we load all pending transactions sent to the node server
-            data = None
-            with eventlet.Timeout(5, False):
-                url     = MINER_NODE_URL + "/txion?update=" + MINER_ADDRESS
-                payload = {"source": "miner", "option":"pendingtxs", "address": MINER_ADDRESS}
-                headers = {"Content-Type": "application/json"}
 
-                data = requests.post(url, json=payload, headers=headers).text
-                eventlet.sleep(0)
+            with mutex:
+                #Then we add the mining reward
+                NODE_PENDING_TRANSACTIONS.append(
+                { "from": "network",
+                  "to": MINER_ADDRESS,
+                  "amount": 1 }
+                )
 
-            if data is not None:
-                NODE_PENDING_TRANSACTIONS = json.loads(data)
-            else:
-                print('local request failed')
-                continue
+                NODE_PENDING_TRANSACTIONS = validate_transactions(list(NODE_PENDING_TRANSACTIONS))
 
-            # #Then we add the mining reward
-            NODE_PENDING_TRANSACTIONS.append(
-            { "from": "network",
-              "to": MINER_ADDRESS,
-              "amount": 1 }
-            )
+                # Now we can gather the data needed to create the new block
+                new_block_data = {
+                "proof-of-work": proof[0],
+                "transactions": NODE_PENDING_TRANSACTIONS
+                }
+                new_block_index = int(last_block.index) + 1
+                new_block_timestamp = time.time()
+                last_block_hash = last_block.hash
+                # Empty transaction list
+                NODE_PENDING_TRANSACTIONS = []
+                # Now create the new block
+                mined_block = Block(new_block_index, new_block_timestamp, new_block_data, last_block_hash, proof[0])
+                BLOCKCHAIN.append(mined_block)
 
-            NODE_PENDING_TRANSACTIONS = validate_transactions(list(NODE_PENDING_TRANSACTIONS))
-
-            # Now we can gather the data needed to create the new block
-            new_block_data = {
-            "proof-of-work": proof[0],
-            "transactions": NODE_PENDING_TRANSACTIONS
-            }
-            new_block_index = int(last_block['index']) + 1
-            new_block_timestamp = time.time()
-            last_block_hash = last_block['hash']
-            # Empty transaction list
-            NODE_PENDING_TRANSACTIONS = []
-            # Now create the new block
-            mined_block = Block(new_block_index, new_block_timestamp, new_block_data, last_block_hash, proof[0])
-            #BLOCKCHAIN.append(mined_block)
-            block_to_add = {
-                "index": str(mined_block.index),
-                "timestamp": str(mined_block.timestamp),
-                "data": str(mined_block.data),
-                "hash": mined_block.hash,
-                "previous_hash": mined_block.previous_hash,
-                "prover": mined_block.prover
-            }
-            BLOCKCHAIN.append(block_to_add)
             # Let the client know this node mined a block
             print(json.dumps({
               "index": new_block_index,
@@ -232,59 +178,47 @@ def mine(a,blockchain,node_pending_transactions):
               "data": new_block_data,
               "hash": last_block_hash
             }) + "\n")
+            print("length is " + str(len(BLOCKCHAIN)))
 
-            with eventlet.Timeout(5,False):
-                i = 0
-                for item in BLOCKCHAIN:
-                    package = []
-                    package.append('chunk')
-                    package.append(item)
-                    package.append(i)
-                    a.send(package)
-                    requests.get(MINER_NODE_URL + "/blocks?update=" + "internal_syncing")
-                    while(a.recv() != i):
-                        wait = True
-
-                    i += 1
-
-                sha = hasher.sha256()
-                sha.update( str(json.dumps(BLOCKCHAIN)).encode('utf-8') )
-                digest = str(sha.hexdigest())
-                package = []
-                package.append('digest')
-                package.append(digest)
-                a.send(package)
-                requests.get(MINER_NODE_URL + "/blocks?update=" + "internal_syncing")
-                eventlet.sleep(0)
-
-def find_new_chains(blockchain):
+def find_new_chains():
     # Get the blockchains of every other node
-    longest_chain = blockchain
+    longest_chain_ip  = (MINER_IP, MINER_PORT)
+    longest_chain_len = 0
+
+    with mutex:
+        longest_chain_len = len(BLOCKCHAIN)
+
     for node_url in PEER_NODES:
         # Get their chains using a GET request
         try:
             chain = None
             with eventlet.Timeout(5, False):
-                chain = requests.get(node_url + "/blocks").content
+                alien_chain_len = questioner(node_url, 'len')
                 eventlet.sleep(0)
+
             if chain is not None:
                 # Convert the JSON object to a Python dictionary
-                chain = json.loads(chain)
+                chain = loads(chain)
             else:
                 print('Request to '+node_url+' has exceeded it\'s timeout.')
                 continue
 
             # Verify other node block is correct
-            if len(chain) > len(longest_chain):
-                longest_chain = chain
+            if alien_chain_len > longest_chain_len:
+                longest_chain_len = alien_chain_len
+                longest_chain_ip  = node_url
 
         except Exception:
             print('Connection to '+node_url+' failed')
+
+    if longest_chain_ip[0] != MINER_IP or longest_chain_ip[1] != MINER_PORT:
+        longest_chain = questioner(longest_chain_ip, 'chain')
+
     return longest_chain
 
-def consensus(blockchain):
+def consensus():
     # Get the blocks from other nodes
-    longest_chain = find_new_chains(blockchain)
+    longest_chain = find_new_chains()
     # If our chain isn't longest, then we store the longest chain
     BLOCKCHAIN = blockchain
 
@@ -298,17 +232,17 @@ def consensus(blockchain):
     if validated:
         # Give up searching proof, update chain and start over again
         BLOCKCHAIN = longest_chain
-        print('external blockcain passed validation\n')
+        print('external blockchain passed validation\n')
         return BLOCKCHAIN
     else:
-        print('external blockcain did not pass validation\n')
+        print('external blockchain did not pass validation\n')
         return False
 
 def validate_blockchain(alien_chain, my_chain):
 
     index = 0
 
-    if len(my_chain) > 1 and alien_chain[len(my_chain)-1]['hash'] == my_chain[-1]['hash']:
+    if len(my_chain) > 1 and alien_chain[len(my_chain)-1].hash == my_chain[-1].hash:
         index = len(my_chain)
     else:
         index = 0
@@ -326,14 +260,14 @@ def validate_blockchain(alien_chain, my_chain):
             continue
         # 1st - verification integrity
         sha = hasher.sha256()
-        sha.update( (str(alien_chain[index]['previous_hash']) + str(alien_chain[index]['prover'])).encode('utf-8'))
+        sha.update( (str(alien_chain[index].previous_hash) + str(alien_chain[index].prover)).encode('utf-8'))
         digest = str(sha.hexdigest())
         if (digest[:len(target)] != target):
             print('digest does not match')
             return False
         # 2st - verification of double spending
         #transactions = (chain[index]["data"]).replace("'", '"')
-        transactions = json.loads((alien_chain[index]["data"]).replace("'", '"'))
+        transactions = json.loads((alien_chain[index].data).replace("'", '"'))
 
         if len(validate_transactions(transactions["transactions"])) != len(transactions["transactions"]):
             return False
@@ -428,102 +362,62 @@ def validate_transactions(transactions):
 
     return valid_transactions
 
-@node.route('/blocks', methods=['GET','POST'])
-def get_blocks():
-    # Load current blockchain. Only you, should update your blockchain
-    if request.args.get("update") == 'internal_syncing' or (str(request.args.get("update")))[:7] == 'syncing':
-        global BLOCKCHAIN
-        global received_blockchain
-        with eventlet.Timeout(5, False):
-            data = b.recv()
-            eventlet.sleep(0)
-        if data is not None:
-            if data[0] == 'chunk':
-                if data[2] == 0:
-                    received_blockchain = []
-                received_blockchain.append(data[1])
-                b.send(data[2])
-            elif data[0] == 'digest':
-                sha = hasher.sha256()
-                sha.update( str(json.dumps(received_blockchain)).encode('utf-8') )
-                digest = str(sha.hexdigest())
-                if digest == data[1]:
-                    BLOCKCHAIN = received_blockchain
-                else:
-                    print('Received blockchain is corrupted.')
-        else:
-            print('Couldn\'t get data from pipe')
-        chain_to_send = BLOCKCHAIN
-    else:
-        # Any other node trying to connect to your node will use this
-        chain_to_send = BLOCKCHAIN
-    # Convert our blocks into dictionaries so we can send them as json objects later
-    chain_to_send_json = []
-    for block in chain_to_send:
-        block = {
-            "index": str(block['index']),
-            "timestamp": str(block['timestamp']),
-            "data": str(block['data']),
-            "hash": block['hash'],
-            "previous_hash": block['previous_hash'],
-            "prover": block['prover']
-        }
-        chain_to_send_json.append(block)
+def listener(b):
 
-    # Send our chain to whomever requested it
-    chain_to_send = json.dumps(chain_to_send_json)
+    lSocket = socket.socket()
+    lSocket.bind((MINER_IP, MINER_PORT))
+
+    lSocket.listen(1)
+
+    while True:
+        conn, addr = lSocket.accept()
+        print ("Connection from: " + str(addr))
+
+        data = conn.recv(1024).decode('utf-8')
+        print('type of data: '+str(type(loads(data))))
+        conn.send(data.encode('utf-8'))
+        continue
+
+        data = conn.recv(1024).decode()
+
+        if not data:
+            break
+        if data == 'chain':
+            conn.send(dumps(chaingiving()).encode('utf-8'))
+            conn.send(data)
+        elif data == 'len':
+           blen = 0
+           with mutex:
+               blen = len(BLOCKCHAIN)
+           conn.send(blen)
+
+
+        conn.close()
+
+def questioner(url, option, blockchain):
+
+    if option is None or option == '':
+        return None
+
+    print('lenght of BLOCKCHAIN: '+ str(len(blockchain)))
+    qSocket = socket.socket()
+    qSocket.connect(url)
+
+    try:
+        qSocket.send(option.encode('utf-8'))
+        data = loads(qSocket.recv(1024).decode("utf-8"))
+        qSocket.close()
+        return data
+    except:
+        print('fault')
+        return None
+
+def chaingiving():
+    global BLOCKCHAIN
+    chain_to_send = []
+    with mutex:
+        chain_to_send = BLOCKCHAIN
     return chain_to_send
-
-@node.route('/txion', methods=['GET','POST'])
-def transaction():
-    """Each transaction sent to this node gets validated and submitted.
-    Then it waits to be added to the blockchain. Transactions only move
-    coins, they don't create it.
-    """
-    if request.method == 'POST':
-        # On each new POST request, we extract the transaction data
-        new_txion = request.get_json()
-        if new_txion['source'] == "wallet" and new_txion['option'] == "newtx":
-            # Then we add the transaction to our list
-            if validate_signature(new_txion['from'],new_txion['signature'],new_txion['message']):
-                NODE_PENDING_TRANSACTIONS.append(new_txion)
-                # Because the transaction was successfully
-                # submitted, we log it to our console
-                print("New transaction")
-                print("FROM: {0}".format(new_txion['from']))
-                print("TO: {0}".format(new_txion['to']))
-                print("AMOUNT: {0}\n".format(new_txion['amount']))
-                # Then we let the client know it worked out
-                return "Transaction submission successful\n"
-            else:
-                return "Transaction submission failed. Wrong signature\n"
-
-        elif new_txion['source'] == "wallet" and new_txion['option'] == "balance":
-             f = open('ledger.txt')
-             filedata = []
-             for line in f:
-                 if line != '\n':
-                     filedata.append(line)
-             f.close()
-             wallet_found = False
-             for line in filedata:
-                 data = line.split(':')
-                 if data[0] == new_txion['wallet']:
-                     wallet_found = True
-                     return data[1]
-             if wallet_found == False:
-                 return "0"
-
-
-        #Send pending transactions to the mining process
-        elif new_txion['source'] == "miner" and new_txion["option"] == "pendingtxs":
-
-            pending = json.dumps(NODE_PENDING_TRANSACTIONS)
-            # Empty transaction list
-            NODE_PENDING_TRANSACTIONS[:] = []
-            return pending
-        else:
-            return 'Arguments not specified'
 
 def validate_signature(public_key,signature,message):
     """Verify if the signature is correct. This is used to prove if
@@ -554,17 +448,11 @@ if __name__ == '__main__':
     welcome_msg()
     #Start mining
     b,a=Pipe(duplex=True)
-    answer = consensus(BLOCKCHAIN)
-
-    if answer != False:
-        BLOCKCHAIN = answer
-        print('blockchain has been initialized with an external chain\n')
-    else:
-        BLOCKCHAIN.append(create_genesis_block())
-
-    p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
+    BLOCKCHAIN.append(create_genesis_block())
+    print('lenght of BLOCKCHAIN: '+ str(len(BLOCKCHAIN)))
+    #p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
+    p1 = Process(target = questioner, args=(('10.10.10.81', 5001),'chain', BLOCKCHAIN))
     p1.start()
     #Start server to recieve transactions
-    p2 = Process(target = node.run(host = MINER_IP, port = MINER_PORT), args=b)
-
+    p2 = Process(target = listener, args = (b,))
     p2.start()
