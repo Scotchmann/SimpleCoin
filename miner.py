@@ -1,10 +1,9 @@
+
 #!/usr/bin/env python3
 import time
 import hashlib as hasher
-import json
-import requests
 import base64
-from multiprocessing import Process, Pipe, Lock
+from threading import Thread, Lock
 import ecdsa
 import random
 import eventlet
@@ -13,10 +12,19 @@ import socket
 from json_tricks import dumps, loads
 import logging
 
-log = logging.getLogger('requests')
-log.setLevel(logging.ERROR)
+logging.basicConfig()
+logging.disable(logging.CRITICAL)
 
-from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
+from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, PEER_NODES
+# Node's blockchain copy
+BLOCKCHAIN = []
+
+""" Store the transactions that this node has, in a list
+If the node you sent the transaction adds a block
+it will get accepted, but there is a chance it gets
+discarded and your transaction goes back as if it was never
+processed"""
+NODE_PENDING_TRANSACTIONS = []
 
 mutex = Lock()
 
@@ -64,16 +72,6 @@ def create_genesis_block():
 
     return block
 
-# Node's blockchain copy
-BLOCKCHAIN = []
-
-""" Store the transactions that this node has, in a list
-If the node you sent the transaction adds a block
-it will get accepted, but there is a chance it gets
-discarded and your transaction goes back as if it was never
-processed"""
-NODE_PENDING_TRANSACTIONS = []
-
 def proof_of_work(last_proof,blockchain):
   # Create a variable that we will use to find our next proof of work
   incrementor = random.randrange(0, 500000000)
@@ -106,19 +104,19 @@ def proof_of_work(last_proof,blockchain):
           timefound = int((time.time()-start_time))
 
       # Check if any node found the solution every 60 seconds
-      # if (int(i%200000)==0):
-      #     # If any other node got the proof, stop searching
-      #     new_blockchain = consensus()
-      #     if new_blockchain != False:
-      #         #(False:another node got proof first, new blockchain)
-      #         return (False,new_blockchain)
+      if (int(i%800000)==0):
+          # If any other node got the proof, stop searching
+          new_blockchain = consensus()
+          if new_blockchain != False:
+              #(False:another node got proof first, new blockchain)
+              return (False,new_blockchain)
   # Once that number is found, we can return it as a proof of our work
   return (incrementor,blockchain)
 
-def mine(a,blockchain,node_pending_transactions):
+def mine(blockchain,node_pending_transactions):
     global BLOCKCHAIN
-    with mutex:
-        BLOCKCHAIN = blockchain
+    #with mutex:
+    #    BLOCKCHAIN = blockchain
     NODE_PENDING_TRANSACTIONS = node_pending_transactions
     while True:
         """Mining is the only way that new coins can be created.
@@ -172,7 +170,7 @@ def mine(a,blockchain,node_pending_transactions):
                 BLOCKCHAIN.append(mined_block)
 
             # Let the client know this node mined a block
-            print(json.dumps({
+            print(str({
               "index": new_block_index,
               "timestamp": str(new_block_timestamp),
               "data": new_block_data,
@@ -181,9 +179,11 @@ def mine(a,blockchain,node_pending_transactions):
             print("length is " + str(len(BLOCKCHAIN)))
 
 def find_new_chains():
+    global BLOCKCHAIN
     # Get the blockchains of every other node
     longest_chain_ip  = (MINER_IP, MINER_PORT)
     longest_chain_len = 0
+    longest_chain = BLOCKCHAIN
 
     with mutex:
         longest_chain_len = len(BLOCKCHAIN)
@@ -192,16 +192,13 @@ def find_new_chains():
         # Get their chains using a GET request
         try:
             chain = None
+            alien_chain_len = 0
             with eventlet.Timeout(5, False):
-                alien_chain_len = questioner(node_url, 'len')
+                try:
+                    alien_chain_len = int(request(node_url, 'lenght'))
+                except:
+                    alien_chain_len = 0
                 eventlet.sleep(0)
-
-            if chain is not None:
-                # Convert the JSON object to a Python dictionary
-                chain = loads(chain)
-            else:
-                print('Request to '+node_url+' has exceeded it\'s timeout.')
-                continue
 
             # Verify other node block is correct
             if alien_chain_len > longest_chain_len:
@@ -212,7 +209,7 @@ def find_new_chains():
             print('Connection to '+node_url+' failed')
 
     if longest_chain_ip[0] != MINER_IP or longest_chain_ip[1] != MINER_PORT:
-        longest_chain = questioner(longest_chain_ip, 'chain')
+        longest_chain = request(longest_chain_ip, 'chain')
 
     return longest_chain
 
@@ -220,18 +217,19 @@ def consensus():
     # Get the blocks from other nodes
     longest_chain = find_new_chains()
     # If our chain isn't longest, then we store the longest chain
-    BLOCKCHAIN = blockchain
 
     # If the longest chain wasn't ours, then we set our chain to the longest
+    global BLOCKCHAIN
     if longest_chain == BLOCKCHAIN:
         # Keep searching for proof
         return False
 
-    validated = validate_blockchain(longest_chain, blockchain)
+    validated = validate_blockchain(longest_chain, BLOCKCHAIN)
     print('VALIDATED: '+str(validated))
     if validated:
         # Give up searching proof, update chain and start over again
-        BLOCKCHAIN = longest_chain
+        with mutex:
+            BLOCKCHAIN = longest_chain
         print('external blockchain passed validation\n')
         return BLOCKCHAIN
     else:
@@ -266,8 +264,7 @@ def validate_blockchain(alien_chain, my_chain):
             print('digest does not match')
             return False
         # 2st - verification of double spending
-        #transactions = (chain[index]["data"]).replace("'", '"')
-        transactions = json.loads((alien_chain[index].data).replace("'", '"'))
+        transactions = alien_chain[index].data
 
         if len(validate_transactions(transactions["transactions"])) != len(transactions["transactions"]):
             return False
@@ -362,8 +359,7 @@ def validate_transactions(transactions):
 
     return valid_transactions
 
-def listener(b):
-
+def listen():
     lSocket = socket.socket()
     lSocket.bind((MINER_IP, MINER_PORT))
 
@@ -371,48 +367,49 @@ def listener(b):
 
     while True:
         conn, addr = lSocket.accept()
-        print ("Connection from: " + str(addr))
-
-        data = conn.recv(1024).decode('utf-8')
-        print('type of data: '+str(type(loads(data))))
-        conn.send(data.encode('utf-8'))
-        continue
 
         data = conn.recv(1024).decode()
 
         if not data:
             break
         if data == 'chain':
-            conn.send(dumps(chaingiving()).encode('utf-8'))
-            conn.send(data)
-        elif data == 'len':
+            conn.send(dumps(getchain()).encode())
+        elif data == 'lenght':
            blen = 0
            with mutex:
                blen = len(BLOCKCHAIN)
-           conn.send(blen)
-
+           conn.send(str(blen).encode())
 
         conn.close()
 
-def questioner(url, option, blockchain):
+def request(url, option):
 
     if option is None or option == '':
         return None
-
-    print('lenght of BLOCKCHAIN: '+ str(len(blockchain)))
-    qSocket = socket.socket()
-    qSocket.connect(url)
-
     try:
-        qSocket.send(option.encode('utf-8'))
-        data = loads(qSocket.recv(1024).decode("utf-8"))
-        qSocket.close()
-        return data
-    except:
-        print('fault')
-        return None
 
-def chaingiving():
+        qSocket = socket.socket()
+        qSocket.connect(url)
+
+        try:
+            qSocket.send(option.encode())
+            data = b''
+            while True:
+                packet = qSocket.recv(1024)
+                if not packet:
+                    break
+                data += packet
+
+            data = loads(data.decode())
+            qSocket.close()
+            return data
+        except:
+            print('fault')
+            return None
+    except:
+        print('Connection to '+str(url[0])+':'+str(url[1]) + ' failed.')
+
+def getchain():
     global BLOCKCHAIN
     chain_to_send = []
     with mutex:
@@ -439,20 +436,22 @@ def welcome_msg():
         You can find more help at: https://github.com/Scotchmann/SimpleCoin\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
-    print('Miner has been started at '+MINER_NODE_URL+'! Good luck!\n')
+    print('Miner has been started at '+MINER_PORT+' port! Good luck!\n')
 
 def initialize_miner():
     result = consensus()
 
 if __name__ == '__main__':
+
     welcome_msg()
     #Start mining
-    b,a=Pipe(duplex=True)
+
     BLOCKCHAIN.append(create_genesis_block())
     print('lenght of BLOCKCHAIN: '+ str(len(BLOCKCHAIN)))
-    #p1 = Process(target = mine, args=(a,BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
-    p1 = Process(target = questioner, args=(('10.10.10.81', 5001),'chain', BLOCKCHAIN))
+
+    p1 = Thread(target = mine, args=(BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
     p1.start()
+
     #Start server to recieve transactions
-    p2 = Process(target = listener, args = (b,))
+    p2 = Thread(target = listen)
     p2.start()
