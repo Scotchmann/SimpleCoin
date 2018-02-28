@@ -1,6 +1,7 @@
 
 #!/usr/bin/env python3
 import time
+import select
 import hashlib as hasher
 import base64
 from threading import Thread, Lock
@@ -11,9 +12,11 @@ import os.path
 import socket
 from json_tricks import dumps, loads
 import logging
+import errno
+from time import sleep
 
 logging.basicConfig()
-logging.disable(logging.CRITICAL)
+logging.disable(logging.ERROR)
 
 from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, PEER_NODES
 # Node's blockchain copy
@@ -216,6 +219,8 @@ def find_new_chains():
 def consensus():
     # Get the blocks from other nodes
     longest_chain = find_new_chains()
+    if not longest_chain:
+        return False
     # If our chain isn't longest, then we store the longest chain
 
     # If the longest chain wasn't ours, then we set our chain to the longest
@@ -265,7 +270,6 @@ def validate_blockchain(alien_chain, my_chain):
             return False
         # 2st - verification of double spending
         transactions = alien_chain[index].data
-
         if len(validate_transactions(transactions["transactions"])) != len(transactions["transactions"]):
             return False
 
@@ -286,7 +290,6 @@ def validate_transactions(transactions):
             if line != '\n':
                 filedata.append(line)
         f.close()
-
         # Checking of the network reward
         if transaction['from'] == 'network' and float(transaction['amount']) == 1:
             if network_checked:
@@ -361,51 +364,86 @@ def validate_transactions(transactions):
 
 def listen():
     lSocket = socket.socket()
+    lSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     lSocket.bind((MINER_IP, MINER_PORT))
-
-    lSocket.listen(1)
+    lSocket.listen(5)
 
     while True:
         conn, addr = lSocket.accept()
-
-        data = conn.recv(1024).decode()
-
+        conn.setblocking(0)
+        data = b''
+        while True:
+            try:
+                packet = conn.recv(1024)
+                if not packet:
+                    break
+                data += packet
+            except socket.error as e:
+                err = e.args[0]
+                if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+                    break
+                else:
+                    sys.exit(1)
         if not data:
-            break
-        if data == 'chain':
+            conn.close()
+            continue
+        else:
+            data = loads(data.decode())
+
+        if data[0] == 'chain':
             conn.send(dumps(getchain()).encode())
-        elif data == 'lenght':
+        elif data[0] == 'lenght':
            blen = 0
            with mutex:
                blen = len(BLOCKCHAIN)
            conn.send(str(blen).encode())
+        elif data[0] == 'txion':
+            conn.send(str(getnewtransaction(data[1])).encode())
+
+        elif data[0] == 'balance':
+            print('wallet '+str(data[1]))
+            conn.send(str(getbalance(data[1])).encode())
 
         conn.close()
 
-def request(url, option):
+def request(url, option, payload = None):
 
     if option is None or option == '':
         return None
     try:
 
         qSocket = socket.socket()
+        qSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        qSocket.settimeout(2)
         qSocket.connect(url)
+        #qSocket.setblocking(0)
 
         try:
-            qSocket.send(option.encode())
+            qSocket.send(dumps((option, payload)).encode())
             data = b''
             while True:
-                packet = qSocket.recv(1024)
-                if not packet:
-                    break
-                data += packet
-
-            data = loads(data.decode())
+                try:
+                    packet = qSocket.recv(1024)
+                    if not packet:
+                        break
+                    data += packet
+                except socket.error as e:
+                    err = e.args[0]
+                    if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+                        print('broken')
+                        break
+                    else:
+                        break
+            if data != b'':
+                data = loads(data.decode())
+            else:
+                return None
             qSocket.close()
             return data
         except:
             print('fault')
             return None
+        qSocket.close()
     except:
         print('Connection to '+str(url[0])+':'+str(url[1]) + ' failed.')
 
@@ -415,6 +453,37 @@ def getchain():
     with mutex:
         chain_to_send = BLOCKCHAIN
     return chain_to_send
+
+def getbalance(wallet):
+    f = open('ledger.txt')
+    filedata = []
+    for line in f:
+        if line != '\n':
+            filedata.append(line)
+    f.close()
+    wallet_found = False
+    for line in filedata:
+        data = line.split(':')
+        if data[0] == wallet:
+            wallet_found = True
+            return data[1]
+    if wallet_found == False:
+        return "0"
+
+def getnewtransaction(new_txion):
+    if validate_signature(new_txion['from'],new_txion['signature'],new_txion['message']):
+        with mutex:
+            NODE_PENDING_TRANSACTIONS.append(new_txion)
+        # Because the transaction was successfully
+        # submitted, we log it to our console
+        print("New transaction")
+        print("FROM: {0}".format(new_txion['from']))
+        print("TO: {0}".format(new_txion['to']))
+        print("AMOUNT: {0}\n".format(new_txion['amount']))
+        # Then we let the client know it worked out
+        return "Transaction submission successful"
+    else:
+        return "Transaction submission failed. Wrong signature"
 
 def validate_signature(public_key,signature,message):
     """Verify if the signature is correct. This is used to prove if
@@ -436,7 +505,7 @@ def welcome_msg():
         You can find more help at: https://github.com/Scotchmann/SimpleCoin\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
-    print('Miner has been started at '+MINER_PORT+' port! Good luck!\n')
+    print('Miner has been started at '+str(MINER_PORT)+' port! Good luck!\n')
 
 def initialize_miner():
     result = consensus()

@@ -20,17 +20,19 @@ transaction with same timestamp was added, they should remove it from the
 node_pending_transactions list to avoid it get processed more than 1 time.
 """
 
-import requests
+import socket
 import time
 import base64
 import ecdsa
-from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, MINER_NODE_URL, PEER_NODES
+import errno
+from json_tricks import dumps, loads
+from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, PEER_NODES
 
 def welcome_msg():
     print("""       =========================================\n
         SIMPLE COIN v1.0.0 - BLOCKCHAIN SYSTEM\n
        =========================================\n\n
-        You can find more help at: https://github.com/cosme12/SimpleCoin\n
+        You can find more help at: https://github.com/Scotchmann/SimpleCoin\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
 
@@ -79,18 +81,44 @@ def send_transaction(addr_from,private_key,addr_to,amount):
     """
     #for fast debuging REMOVE LATER
     private_key="d9319751ce59ff9450f4c8b469738227bb34c26a9e94283e123c0be6fa494466"
-    amount="5"
+    amount="1"
     addr_from="i7YqTe+slTO9f+MpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWvWlEbzeReIzHG43TxkAnlw5w=="
     addr_to="i7YqTe+slTO9f+MpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWvWlNEWADRESS"
 
     if len(private_key) == 64:
         signature,message = sign_ECDSA_msg(private_key)
-        url     = MINER_NODE_URL+'/txion'
-        payload = {"source": "wallet","option":"newtx", "from": addr_from, "to": addr_to, "amount": amount, "signature": signature.decode(), "message": message}
-        headers = {"Content-Type": "application/json"}
+        url     = (MINER_IP,MINER_PORT)
+        payload = {"from": addr_from, "to": addr_to, "amount": amount, "signature": signature.decode(), "message": message}
+        try:
+            qSocket = socket.socket()
+            qSocket.settimeout(2)
+            qSocket.connect(url)
+            try:
+                qSocket.send(dumps(('txion', payload)).encode())
+                data = b''
+                while True:
+                    try:
+                        packet = qSocket.recv(1024)
+                        if not packet:
+                            break
+                        data += packet
+                    except socket.error as e:
+                        err = e.args[0]
+                        if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+                            break
+                        else:
+                            print(e)
+                            break
+                if data:
+                    print(data.decode())
+                else:
+                    pass
+            except:
+                print('fault')
 
-        res = requests.post(url, json=payload, headers=headers)
-        print(res.text)
+            qSocket.close()
+        except:
+            print('Connection to '+str(url[0])+':'+str(url[1]) + ' failed.')
     else:
         print("Wrong address or key length! Verify and try again.")
 
@@ -102,12 +130,39 @@ def check_transactions():
     print(res.text)
 
 def check_balance(wallet_to_check):
-    url     = MINER_NODE_URL+'/txion'
-    payload = {"source": "wallet", "option":"balance", "wallet": wallet_to_check}
-    headers = {"Content-Type": "application/json"}
+    url     = (MINER_IP,MINER_PORT)
+    try:
+        qSocket = socket.socket()
+        qSocket.connect(url)
+        qSocket.settimeout(2)
+        try:
+            qSocket.send(dumps(('balance', wallet_to_check)).encode())
+            data = b''
+            while True:
+                try:
+                    packet = qSocket.recv(1024)
+                    if not packet:
+                        break
+                    data += packet
+                except socket.error as e:
+                    err = e.args[0]
+                    if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+                        break
+                    else:
+                        print(e)
+                        break
+            if data:
+                data = loads(data.decode())
+            else:
+                print('balance fault')
+                return None
 
-    res = requests.post(url, json=payload, headers=headers)
-    print('Your balance is: ' + str(float(res.text)))
+            print('Your balance is: ' + str(float(data)))
+            qSocket.close()
+        except:
+            print('fault')
+    except:
+        print('Connection to '+str(url[0])+':'+str(url[1]) + ' failed.')
 
 def generate_ECDSA_keys():
     """This function takes care of creating your private and public (your address) keys.
