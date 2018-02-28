@@ -1,6 +1,7 @@
 
 #!/usr/bin/env python3
 import time
+import select
 import hashlib as hasher
 import base64
 from threading import Thread, Lock
@@ -11,9 +12,11 @@ import os.path
 import socket
 from json_tricks import dumps, loads
 import logging
+import errno
+from time import sleep
 
 logging.basicConfig()
-logging.disable(logging.CRITICAL)
+logging.disable(logging.ERROR)
 
 from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, PEER_NODES
 # Node's blockchain copy
@@ -74,47 +77,47 @@ def create_genesis_block():
 
 def proof_of_work(last_proof,blockchain):
   # Create a variable that we will use to find our next proof of work
-  incrementor = random.randrange(0, 500000000)
-  i = 0
-  found = False
-  start_time = time.time()
-  timefound = 0
-  time_printed = False
-  bhash = str(blockchain[-1].hash)
+    incrementor = random.randrange(0, 500000000)
+    i = 0
+    found = False
+    start_time = time.time()
+    timefound = 0
+    time_printed = False
+    bhash = str(blockchain[-1].hash)
 
-  while not found:
-      incrementor += 1
-      i += 1
-      sha = hasher.sha256()
-      sha.update( (bhash + str(incrementor)).encode('utf-8'))
-      digest = str(sha.hexdigest())
+    while not found:
+        incrementor += 1
+        i += 1
+        sha = hasher.sha256()
+        sha.update( (bhash + str(incrementor)).encode('utf-8'))
+        digest = str(sha.hexdigest())
 
-      if timefound != int(time.time()-start_time):
-          timefound = int(time.time()-start_time)
-          time_printed = False
+        if timefound != int(time.time()-start_time):
+            timefound = int(time.time()-start_time)
+            time_printed = False
 
-      if (time_printed == False and timefound != 0 and timefound % 60 == 0):
-          print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)) +'\n')
-          time_printed = True
+        if (time_printed == False and timefound != 0 and timefound % 60 == 0):
+            print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)) +'\n')
+            time_printed = True
 
-      if (digest[:len(target)] == target):
-          found = True
-          print("")
-          print(digest + ' - ' +str(i) +' FOUND!!!')
-          timefound = int((time.time()-start_time))
+        if (digest[:len(target)] == target):
+            found = True
+            print('\n' + digest + ' - ' +str(i) +' FOUND!!!')
+            timefound = int((time.time()-start_time))
 
-      # Check if any node found the solution every 60 seconds
-      if (int(i%800000)==0):
-          # If any other node got the proof, stop searching
-          new_blockchain = consensus()
-          if new_blockchain != False:
-              #(False:another node got proof first, new blockchain)
-              return (False,new_blockchain)
-  # Once that number is found, we can return it as a proof of our work
-  return (incrementor,blockchain)
+        # Check if any node found the solution every 60 seconds
+        if (int(i%800000)==0):
+            # If any other node got the proof, stop searching
+            new_blockchain = consensus()
+            if new_blockchain != False:
+                #(False:another node got proof first, new blockchain)
+                return (False,new_blockchain)
+    # Once that number is found, we can return it as a proof of our work
+    return (incrementor,blockchain)
 
 def mine(blockchain,node_pending_transactions):
     global BLOCKCHAIN
+    global NODE_PENDING_TRANSACTIONS
     #with mutex:
     #    BLOCKCHAIN = blockchain
     NODE_PENDING_TRANSACTIONS = node_pending_transactions
@@ -195,7 +198,7 @@ def find_new_chains():
             alien_chain_len = 0
             with eventlet.Timeout(5, False):
                 try:
-                    alien_chain_len = int(request(node_url, 'lenght'))
+                    alien_chain_len = int(request(node_url, 'length'))
                 except:
                     alien_chain_len = 0
                 eventlet.sleep(0)
@@ -216,6 +219,8 @@ def find_new_chains():
 def consensus():
     # Get the blocks from other nodes
     longest_chain = find_new_chains()
+    if not longest_chain:
+        return False
     # If our chain isn't longest, then we store the longest chain
 
     # If the longest chain wasn't ours, then we set our chain to the longest
@@ -265,7 +270,6 @@ def validate_blockchain(alien_chain, my_chain):
             return False
         # 2st - verification of double spending
         transactions = alien_chain[index].data
-
         if len(validate_transactions(transactions["transactions"])) != len(transactions["transactions"]):
             return False
 
@@ -286,7 +290,6 @@ def validate_transactions(transactions):
             if line != '\n':
                 filedata.append(line)
         f.close()
-
         # Checking of the network reward
         if transaction['from'] == 'network' and float(transaction['amount']) == 1:
             if network_checked:
@@ -361,51 +364,74 @@ def validate_transactions(transactions):
 
 def listen():
     lSocket = socket.socket()
+    lSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     lSocket.bind((MINER_IP, MINER_PORT))
-
-    lSocket.listen(1)
+    lSocket.listen(5)
 
     while True:
         conn, addr = lSocket.accept()
-
-        data = conn.recv(1024).decode()
-
+        conn.setblocking(0)
+        data = b''
+        while True:
+            try:
+                packet = conn.recv(1024)
+                if not packet:
+                    break
+                data += packet
+            except socket.error as e:
+                break
         if not data:
-            break
-        if data == 'chain':
+            conn.close()
+            continue
+        else:
+            data = loads(data.decode())
+
+        if data[0] == 'chain':
             conn.send(dumps(getchain()).encode())
-        elif data == 'lenght':
-           blen = 0
-           with mutex:
-               blen = len(BLOCKCHAIN)
-           conn.send(str(blen).encode())
+        elif data[0] == 'length':
+            blen = 0
+            with mutex:
+                blen = len(BLOCKCHAIN)
+            conn.send(str(blen).encode())
+        elif data[0] == 'txion':
+            conn.send(str(getnewtransaction(data[1])).encode())
+        elif data[0] == 'balance':
+            conn.send(str(getbalance(data[1])).encode())
+        elif data[0] == 'pendingtxion':
+            conn.send(dumps(getpendingtransactions()).encode())
 
         conn.close()
 
-def request(url, option):
+def request(url, option, payload = None):
 
     if option is None or option == '':
         return None
+
     try:
-
         qSocket = socket.socket()
+        qSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        qSocket.settimeout(2)
         qSocket.connect(url)
+        qSocket.send(dumps((option, payload)).encode())
+        data = b''
 
-        try:
-            qSocket.send(option.encode())
-            data = b''
-            while True:
+        while True:
+            try:
                 packet = qSocket.recv(1024)
                 if not packet:
                     break
                 data += packet
+            except socket.error as e:
+                break
 
+        if data:
             data = loads(data.decode())
-            qSocket.close()
-            return data
-        except:
-            print('fault')
+        else:
             return None
+
+        qSocket.close()
+        return data
+
     except:
         print('Connection to '+str(url[0])+':'+str(url[1]) + ' failed.')
 
@@ -415,6 +441,44 @@ def getchain():
     with mutex:
         chain_to_send = BLOCKCHAIN
     return chain_to_send
+
+def getbalance(wallet):
+    f = open('ledger.txt')
+    filedata = []
+    for line in f:
+        if line != '\n':
+            filedata.append(line)
+    f.close()
+    wallet_found = False
+    for line in filedata:
+        data = line.split(':')
+        if data[0] == wallet:
+            wallet_found = True
+            return data[1]
+    if wallet_found == False:
+        return "0"
+
+def getnewtransaction(new_txion):
+    global NODE_PENDING_TRANSACTIONS
+    if validate_signature(new_txion['from'],new_txion['signature'],new_txion['message']):
+        with mutex:
+            NODE_PENDING_TRANSACTIONS.append(new_txion)
+        # Because the transaction was successfully
+        # submitted, we log it to our console
+        print("New transaction")
+        print("FROM: {0}".format(new_txion['from']))
+        print("TO: {0}".format(new_txion['to']))
+        print("AMOUNT: {0}\n".format(new_txion['amount']))
+        # Then we let the client know it worked out
+        return "Transaction submission successful"
+    else:
+        return "Transaction submission failed. Wrong signature"
+
+def getpendingtransactions():
+    txs = []
+    with mutex:
+        txs = NODE_PENDING_TRANSACTIONS
+    return txs
 
 def validate_signature(public_key,signature,message):
     """Verify if the signature is correct. This is used to prove if
@@ -436,7 +500,7 @@ def welcome_msg():
         You can find more help at: https://github.com/Scotchmann/SimpleCoin\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
-    print('Miner has been started at '+MINER_PORT+' port! Good luck!\n')
+    print('Miner has been started at '+str(MINER_PORT)+' port! Good luck!\n')
 
 def initialize_miner():
     result = consensus()
@@ -447,7 +511,7 @@ if __name__ == '__main__':
     #Start mining
 
     BLOCKCHAIN.append(create_genesis_block())
-    print('lenght of BLOCKCHAIN: '+ str(len(BLOCKCHAIN)))
+    print('length of BLOCKCHAIN: '+ str(len(BLOCKCHAIN)))
 
     p1 = Thread(target = mine, args=(BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
     p1.start()
