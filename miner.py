@@ -5,6 +5,8 @@ import select
 import hashlib as hasher
 import base64
 from threading import Thread, Lock
+from multiprocess import Process, Value, freeze_support
+import ctypes
 import ecdsa
 import random
 import eventlet
@@ -13,7 +15,7 @@ import socket
 from json_tricks import dumps, loads
 import logging
 import errno
-from time import sleep
+import sys
 
 logging.basicConfig()
 logging.disable(logging.ERROR)
@@ -75,15 +77,18 @@ def create_genesis_block():
 
     return block
 
-def proof_of_work(last_proof,blockchain):
-  # Create a variable that we will use to find our next proof of work
-    incrementor = random.randrange(0, 500000000)
+def proof_of_work(last_hash, b_len, prover, target, incrementor = 0):
+    import time
+    import hashlib as hasher
+    # Create a variable that we will use to find our next proof of work
+    if incrementor == 0:
+        incrementor = random.randrange(0, 500000000)
     i = 0
     found = False
     start_time = time.time()
     timefound = 0
     time_printed = False
-    bhash = str(blockchain[-1].hash)
+    bhash = str(last_hash)
 
     while not found:
         incrementor += 1
@@ -97,52 +102,71 @@ def proof_of_work(last_proof,blockchain):
             time_printed = False
 
         if (time_printed == False and timefound != 0 and timefound % 60 == 0):
-            print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(len(blockchain)) +'\n')
+            print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
             time_printed = True
 
         if (digest[:len(target)] == target):
             found = True
             print('\n' + digest + ' - ' +str(i) +' FOUND!!!')
             timefound = int((time.time()-start_time))
+            prover.value = incrementor
+            return
+        if (int(i%50000)==0):
+            if prover.value != 0:
+                return
 
-        # Check if any node found the solution every 60 seconds
-        if (int(i%800000)==0):
-            # If any other node got the proof, stop searching
-            new_blockchain = consensus()
-            if new_blockchain != False:
-                #(False:another node got proof first, new blockchain)
-                return (False,new_blockchain)
-    # Once that number is found, we can return it as a proof of our work
-    return (incrementor,blockchain)
-
-def mine(blockchain,node_pending_transactions):
+def mine(blockchain,node_pending_transactions, workersnumber = 1):
     global BLOCKCHAIN
     global NODE_PENDING_TRANSACTIONS
     #with mutex:
     #    BLOCKCHAIN = blockchain
     NODE_PENDING_TRANSACTIONS = node_pending_transactions
+
     while True:
         """Mining is the only way that new coins can be created.
         In order to prevent too many coins to be created, the process
         is slowed down by a proof of work algorithm.
         """
         # Get the last proof of work
+        last_block = 0
         with mutex:
+            last_hash = BLOCKCHAIN[-1].hash
+            b_len = len(BLOCKCHAIN)
             last_block = BLOCKCHAIN[-1]
-        try:
-            last_proof = last_block.data['proof-of-work']
-        except Exception:
-            last_proof = 0
 
         print('starting a new search round\n')
-        # Find the proof of work for the current block being mined
-        # Note: The program will hang here until a new proof of work is found
-        proof = proof_of_work(last_proof, BLOCKCHAIN)
-        # If we didn't guess the proof, start mining again
-        if proof[0] == False:
+
+        workers = []
+        new_blockchain = False
+        foundedprover = Value('d', 0)
+        seed = random.randrange(0, 500000000)
+        for i in range(workersnumber):
+            seed += 500000000
+            p = Process(target = proof_of_work, args = (last_hash,b_len,foundedprover,target,seed))
+            p.start()
+            workers.append(p)
+
+        i = 0
+        while True:
+            i += 1
+            # Check if any node found the solution every 60 seconds
+            if (int(i%800000)==0):
+                if foundedprover.value != 0:
+                    for p in workers:
+                        p.join()
+                    break
+                # If any other node got the proof, stop searching
+                new_blockchain = consensus()
+                if new_blockchain != False:
+                    foundedprover.value = 0.1
+                    for p in workers:
+                        p.join()
+                    break
+
+        if new_blockchain != False:
             # Update blockchain and save it to file
             with mutex:
-                BLOCKCHAIN = proof[1]
+                BLOCKCHAIN = new_blockchain
 
         else:
             # Once we find a valid proof of work, we know we can mine a block so
@@ -160,7 +184,7 @@ def mine(blockchain,node_pending_transactions):
 
                 # Now we can gather the data needed to create the new block
                 new_block_data = {
-                "proof-of-work": proof[0],
+                "proof-of-work": int(foundedprover.value),
                 "transactions": NODE_PENDING_TRANSACTIONS
                 }
                 new_block_index = int(last_block.index) + 1
@@ -169,7 +193,7 @@ def mine(blockchain,node_pending_transactions):
                 # Empty transaction list
                 NODE_PENDING_TRANSACTIONS = []
                 # Now create the new block
-                mined_block = Block(new_block_index, new_block_timestamp, new_block_data, last_block_hash, proof[0])
+                mined_block = Block(new_block_index, new_block_timestamp, new_block_data, last_block_hash, int(foundedprover.value))
                 BLOCKCHAIN.append(mined_block)
 
             # Let the client know this node mined a block
@@ -201,7 +225,6 @@ def find_new_chains():
                     alien_chain_len = int(request(node_url, 'length'))
                 except:
                     alien_chain_len = 0
-                eventlet.sleep(0)
 
             # Verify other node block is correct
             if alien_chain_len > longest_chain_len:
@@ -506,14 +529,20 @@ def initialize_miner():
     result = consensus()
 
 if __name__ == '__main__':
-
+    workersnumber = 1
+    if len (sys.argv) > 1:
+        try:
+            workersnumber = int(sys.argv[1])
+        except:
+            print('Argument is not a number')
+    freeze_support()
     welcome_msg()
     #Start mining
 
     BLOCKCHAIN.append(create_genesis_block())
     print('length of BLOCKCHAIN: '+ str(len(BLOCKCHAIN)))
 
-    p1 = Thread(target = mine, args=(BLOCKCHAIN,NODE_PENDING_TRANSACTIONS))
+    p1 = Thread(target = mine, args=(BLOCKCHAIN,NODE_PENDING_TRANSACTIONS, workersnumber))
     p1.start()
 
     #Start server to recieve transactions
