@@ -167,11 +167,9 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
             # Update blockchain and save it to file
             with mutex:
                 BLOCKCHAIN = new_blockchain
-
         else:
             # Once we find a valid proof of work, we know we can mine a block so
             # we reward the miner by adding a transaction
-
             with mutex:
                 #Then we add the mining reward
                 NODE_PENDING_TRANSACTIONS.append(
@@ -210,9 +208,9 @@ def find_new_chains():
     # Get the blockchains of every other node
     longest_chain_ip  = (MINER_IP, MINER_PORT)
     longest_chain_len = 0
-    longest_chain = BLOCKCHAIN
-
+    updated = False
     with mutex:
+        longest_chain = BLOCKCHAIN
         longest_chain_len = len(BLOCKCHAIN)
 
     for node_url in PEER_NODES:
@@ -236,22 +234,22 @@ def find_new_chains():
 
     if longest_chain_ip[0] != MINER_IP or longest_chain_ip[1] != MINER_PORT:
         longest_chain = request(longest_chain_ip, 'chain')
+        updated = True
 
-    return longest_chain
+    if updated:
+        return longest_chain
+    else:
+        return None
 
 def consensus():
     # Get the blocks from other nodes
+    global BLOCKCHAIN
     longest_chain = find_new_chains()
     if not longest_chain:
         return False
     # If our chain isn't longest, then we store the longest chain
-
-    # If the longest chain wasn't ours, then we set our chain to the longest
-    global BLOCKCHAIN
-    if longest_chain == BLOCKCHAIN:
-        # Keep searching for proof
-        return False
-
+    print('I seems that an external chain is longer')
+    print("I'm going to validate it")
     validated = validate_blockchain(longest_chain, BLOCKCHAIN)
     print('VALIDATED: '+str(validated))
     if validated:
