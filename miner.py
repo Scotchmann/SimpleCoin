@@ -77,7 +77,7 @@ def create_genesis_block():
 
     return block
 
-def proof_of_work(last_hash, b_len, prover, target, incrementor = 0):
+def proof_of_work(last_hash, b_len, prover, allspeed, target, incrementor = 0):
     import time
     import hashlib as hasher
     # Create a variable that we will use to find our next proof of work
@@ -101,9 +101,11 @@ def proof_of_work(last_hash, b_len, prover, target, incrementor = 0):
             timefound = int(time.time()-start_time)
             time_printed = False
 
-        if (time_printed == False and timefound != 0 and timefound % 60 == 0):
-            print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
+        if (time_printed == False and timefound != 0 and timefound % 29 == 0):
+            #print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
             time_printed = True
+            allspeed.value += i/timefound
+            
 
         if (digest[:len(target)] == target):
             found = True
@@ -139,20 +141,29 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
         workers = []
         new_blockchain = False
         foundedprover = Value('d', 0)
+        allspeed = Value('f', 0)
+        start_time = time.time()
+        timefound = 0
+        time_printed = False
         seed = random.randrange(0, 500000000)
         for i in range(workersnumber):
             seed += 500000000
-            p = Process(target = proof_of_work, args = (last_hash,b_len,foundedprover,target,seed))
+            p = Process(target = proof_of_work, args = (last_hash,b_len,foundedprover,allspeed,target,seed))
             p.start()
             workers.append(p)
 
-        i = 0
         while True:
-            #i += 1
-            #тест
             time.sleep(0.1)
-            # Check if any node found the solution every 60 seconds
-            #if (int(i%800000)==0):
+
+            if timefound != int(time.time()-start_time):
+                timefound = int(time.time()-start_time)
+                time_printed = False
+
+            if (time_printed == False and timefound != 0 and timefound % 30 == 0):
+                print('allspeed - '+str(int(allspeed.value)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
+                time_printed = True
+                allspeed.value = 0
+    
             if foundedprover.value != 0:
                 for p in workers:
                     p.join()
