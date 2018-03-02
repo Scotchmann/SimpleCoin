@@ -105,7 +105,7 @@ def proof_of_work(last_hash, b_len, prover, allspeed, target, incrementor = 0):
             #print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
             time_printed = True
             allspeed.value += i/timefound
-            
+
 
         if (digest[:len(target)] == target):
             found = True
@@ -163,7 +163,7 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
                 print('allspeed - '+str(int(allspeed.value)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
                 time_printed = True
                 allspeed.value = 0
-    
+
             if foundedprover.value != 0:
                 for p in workers:
                     p.join()
@@ -538,7 +538,8 @@ def welcome_msg():
     print('Miner has been started at '+str(MINER_PORT)+' port! Good luck!\n')
 
 def initialize_miner():
-    result = consensus()
+    open('ledger.txt', 'w').close()
+    BLOCKCHAIN.append(create_genesis_block())
 
 if __name__ == '__main__':
     workersnumber = 1
@@ -551,7 +552,7 @@ if __name__ == '__main__':
     welcome_msg()
     #Start mining
 
-    BLOCKCHAIN.append(create_genesis_block())
+    initialize_miner()
     print('length of BLOCKCHAIN: '+ str(len(BLOCKCHAIN)))
 
     p1 = Thread(target = mine, args=(BLOCKCHAIN,NODE_PENDING_TRANSACTIONS, workersnumber))
