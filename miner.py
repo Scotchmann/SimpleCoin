@@ -153,7 +153,7 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
             workers.append(p)
 
         while True:
-            time.sleep(0.1)
+            time.sleep(0.5)
 
             if timefound != int(time.time()-start_time):
                 timefound = int(time.time()-start_time)
