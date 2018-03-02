@@ -30,9 +30,10 @@ from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, PEER_NODES
 
 def welcome_msg():
     print("""       =========================================\n
-        SIMPLE COIN v1.0.0 - BLOCKCHAIN SYSTEM\n
+        SIMPLE COIN v2.0.0 - BLOCKCHAIN SYSTEM\n
        =========================================\n\n
         You can find more help at: https://github.com/Scotchmann/SimpleCoin\n
+        (Initial project you can find at https://github.com/cosme12/SimpleCoin)\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
 
