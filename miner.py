@@ -149,6 +149,7 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
         i = 0
         while True:
             #i += 1
+            #тест
             time.sleep(0.1)
             # Check if any node found the solution every 60 seconds
             #if (int(i%800000)==0):
