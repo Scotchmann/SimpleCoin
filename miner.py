@@ -218,6 +218,7 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
 
 def find_new_chains():
     global BLOCKCHAIN
+    global PEER_NODES
     # Get the blockchains of every other node
     longest_chain_ip  = (MINER_IP, MINER_PORT)
     longest_chain_len = 0
@@ -226,7 +227,17 @@ def find_new_chains():
         longest_chain = BLOCKCHAIN
         longest_chain_len = len(BLOCKCHAIN)
 
+    peerslist = []
+
     for node_url in PEER_NODES:
+        try:
+            peerslist = loads(request(node_url, 'peernodes', (MINER_IP, MINER_PORT)).decode())
+        except:
+            pass
+        if peerslist:
+            PEER_NODES =list(set(PEER_NODES + peerslist))
+        if node_url == (MINER_IP, MINER_PORT):
+            continue
         # Get their chains using a GET request
         try:
             chain = None
@@ -397,6 +408,7 @@ def validate_transactions(transactions):
     return valid_transactions
 
 def listen():
+    global PEER_NODES
     lSocket = socket.socket()
     lSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     lSocket.bind((MINER_IP, MINER_PORT))
@@ -433,6 +445,10 @@ def listen():
             conn.send(str(getbalance(data[1])).encode())
         elif data[0] == 'pendingtxion':
             conn.send(dumps(getpendingtransactions()).encode())
+        elif data[0] == 'peernodes':
+            conn.send(dumps(PEER_NODES).encode())
+            if (data[1][0], data[1][1]) not in PEER_NODES:
+                PEER_NODES.append( (data[1][0], data[1][1]))
 
         conn.close()
 
@@ -440,6 +456,7 @@ def request(url, option, payload = None):
 
     if option is None or option == '':
         return None
+
 
     try:
         qSocket = socket.socket()
