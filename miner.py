@@ -148,20 +148,21 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
 
         i = 0
         while True:
-            i += 1
+            #i += 1
+            time.sleep(0.1)
             # Check if any node found the solution every 60 seconds
-            if (int(i%800000)==0):
-                if foundedprover.value != 0:
-                    for p in workers:
-                        p.join()
-                    break
-                # If any other node got the proof, stop searching
-                new_blockchain = consensus()
-                if new_blockchain != False:
-                    foundedprover.value = 0.1
-                    for p in workers:
-                        p.join()
-                    break
+            #if (int(i%800000)==0):
+            if foundedprover.value != 0:
+                for p in workers:
+                    p.join()
+                break
+            # If any other node got the proof, stop searching
+            new_blockchain = consensus()
+            if new_blockchain != False:
+                foundedprover.value = 0.1
+                for p in workers:
+                    p.join()
+                break
 
         if new_blockchain != False:
             # Update blockchain and save it to file
