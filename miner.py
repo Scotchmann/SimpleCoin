@@ -21,6 +21,7 @@ logging.basicConfig()
 logging.disable(logging.ERROR)
 
 from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, PEER_NODES
+workersnumber = 1
 # Node's blockchain copy
 BLOCKCHAIN = []
 
@@ -451,7 +452,6 @@ def request(url, option, payload = None):
     if option is None or option == '':
         return None
 
-
     try:
         qSocket = socket.socket()
         qSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -564,7 +564,7 @@ def welcome_msg():
         (Initial project you can find at https://github.com/cosme12/SimpleCoin)\n
         Make sure you are using the latest version or you may end in
         a parallel chain.\n\n\n""")
-    print('Miner has been started at '+str(MINER_PORT)+' port! Good luck!\n')
+    print('Miner has been started at '+str(MINER_IP)+':'+str(MINER_PORT)+' host! Good luck!\n')
 
 def initialize_miner(args):
     global MINER_IP, MINER_PORT, BLOCKCHAIN, PEER_NODES, workersnumber
@@ -578,17 +578,24 @@ def initialize_miner(args):
 
         i = 0
         for item in args:
-            if str(item) == '-p':
+            if item == '-p':
                 try:
                     workersnumber = int(args[(i+1)])
                 except:
-                    print('Argument "workersnumber" is not specified')
-            elif str(item) == '-n':
+                    print('Argument "workersnumber" is not specified correctly')
+            elif item == '-n':
                 try:
                     node = str(args[i+1]).split(':')
                     PEER_NODES.append([node[0],int(node[1])])
                 except:
-                    print('Argument "node" is not specified')
+                    print('Argument "node" is not specified correctly')
+            elif item == '-h':
+                try:
+                    node = str(args[i+1]).split(':')
+                    MINER_IP = node[0]
+                    MINER_PORT = int(node[1])
+                except:
+                    print('Argument "host" is not specified correctly')
             i += 1
 
 if __name__ == '__main__':
