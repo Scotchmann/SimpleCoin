@@ -443,7 +443,7 @@ def listen():
         elif data[0] == 'peernodes':
             conn.send(dumps(PEER_NODES).encode())
             if (data[1][0], data[1][1]) not in PEER_NODES:
-                PEER_NODES.append( (data[1][0], data[1][1]))
+                PEER_NODES.append( [data[1][0], data[1][1]])
 
         conn.close()
 
