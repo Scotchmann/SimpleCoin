@@ -18,10 +18,10 @@ MINER_PORT = 0
 
 # Store the url data of every other node in the network
 # so that we can communicate with them
-#PEER_NODES = [("10.10.10.100",5000)]
-#PEER_NODES = [("10.10.10.81",5000)]
-#PEER_NODES = [("10.10.10.81",5001)]
-#PEER_NODES = [("192.168.1.2",5000)]
-#PEER_NODES = [("192.168.1.2",5001)]
-#PEER_NODES = [("localhost",5001)]
-PEER_NODES = []
+#PEER_NODES = [["10.10.10.100",5000]]
+#PEER_NODES = [["10.10.10.81",5000]]
+#PEER_NODES = [["10.10.10.81",5001]]
+PEER_NODES = [["192.168.1.2",5000]]
+#PEER_NODES = [["192.168.1.2",5001]]
+#PEER_NODES = [["localhost",5001]]
+#PEER_NODES = []
