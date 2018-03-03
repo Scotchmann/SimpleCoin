@@ -23,7 +23,6 @@ logging.disable(logging.ERROR)
 from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, PEER_NODES
 # Node's blockchain copy
 BLOCKCHAIN = []
-workersnumber = 1
 
 """ Store the transactions that this node has, in a list
 If the node you sent the transaction adds a block
@@ -567,33 +566,23 @@ def welcome_msg():
         a parallel chain.\n\n\n""")
     print('Miner has been started at '+str(MINER_PORT)+' port! Good luck!\n')
 
-def initialize_miner(args):
-    global MINER_IP, MINER_PORT, BLOCKCHAIN, PEER_NODES, workersnumber
+def initialize_miner():
+    global MINER_IP, MINER_PORT, BLOCKCHAIN
     open('ledger.txt', 'w').close()
     BLOCKCHAIN.append(create_genesis_block())
     if MINER_IP == '':
         MINER_IP = socket.gethostbyname(socket.getfqdn())
     if MINER_PORT == 0:
         MINER_PORT = 5000
-    if len (args) > 1:
-
-        i = 0
-        for item in args:
-            if str(item) == '-p':
-                try:
-                    workersnumber = int(args[(i+1)])
-                except:
-                    print('Argument "workersnumber" is not a specified')
-            elif str(item) == '-n':
-                try:
-                    node = str(args[i+1]).split(':')
-                    PEER_NODES.append([node[0],int(node[1])])
-                except:
-                    print('Argument "node" is not specified')
-            i += 1
 
 if __name__ == '__main__':
-    initialize_miner(sys.argv)
+    initialize_miner()
+    workersnumber = 1
+    if len (sys.argv) > 1:
+        try:
+            workersnumber = int(sys.argv[1])
+        except:
+            print('Argument is not a number')
     freeze_support()
     welcome_msg()
     #Start mining
