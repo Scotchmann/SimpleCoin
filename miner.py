@@ -555,10 +555,16 @@ def welcome_msg():
     print('Miner has been started at '+str(MINER_PORT)+' port! Good luck!\n')
 
 def initialize_miner():
+    global MINER_IP, MINER_PORT, BLOCKCHAIN
     open('ledger.txt', 'w').close()
     BLOCKCHAIN.append(create_genesis_block())
+    if MINER_IP == '':
+        MINER_IP = socket.gethostbyname(socket.getfqdn())
+    if MINER_PORT == 0:
+        MINER_PORT = 5001
 
 if __name__ == '__main__':
+    initialize_miner()
     workersnumber = 1
     if len (sys.argv) > 1:
         try:
@@ -568,8 +574,6 @@ if __name__ == '__main__':
     freeze_support()
     welcome_msg()
     #Start mining
-
-    initialize_miner()
     print('length of BLOCKCHAIN: '+ str(len(BLOCKCHAIN)))
 
     p1 = Thread(target = mine, args=(BLOCKCHAIN,NODE_PENDING_TRANSACTIONS, workersnumber))

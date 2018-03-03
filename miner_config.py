@@ -8,11 +8,13 @@ MINER_ADDRESS = "i7YqTe+slTO9f+MpPYTOrh8p52T21jxpZBf/RiVAS1QRnCel31hpzEfa1T29UWv
 
 #MINER_IP = "10.10.10.100"
 #MINER_IP = "10.10.10.81"
-MINER_IP = "192.168.1.2"
+#MINER_IP = "192.168.1.2"
 #MINER_IP = "localhost"
+MINER_IP = ''
 
-MINER_PORT = 5000
+#MINER_PORT = 5000
 #MINER_PORT = 5001
+MINER_PORT = 0
 
 # Store the url data of every other node in the network
 # so that we can communicate with them
