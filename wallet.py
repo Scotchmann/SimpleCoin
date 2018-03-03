@@ -189,6 +189,11 @@ def sign_ECDSA_msg(private_key):
 
 
 if __name__ == '__main__':
+    if MINER_IP == '':
+        MINER_IP = socket.gethostbyname(socket.getfqdn())
+    if MINER_PORT == 0:
+        MINER_PORT = 5000
+        
     welcome_msg()
     wallet()
     input("Press any key to exit...")
