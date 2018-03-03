@@ -153,7 +153,7 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
             workers.append(p)
 
         while True:
-            time.sleep(0.5)
+            time.sleep(0.25)
 
             if timefound != int(time.time()-start_time):
                 timefound = int(time.time()-start_time)
@@ -227,15 +227,9 @@ def find_new_chains():
         longest_chain = BLOCKCHAIN
         longest_chain_len = len(BLOCKCHAIN)
 
-    peerslist = []
+    peerlist = []
 
     for node_url in PEER_NODES:
-        try:
-            peerslist = loads(request(node_url, 'peernodes', (MINER_IP, MINER_PORT)).decode())
-        except:
-            pass
-        if peerslist:
-            PEER_NODES =list(set(PEER_NODES + peerslist))
         if node_url == (MINER_IP, MINER_PORT):
             continue
         # Get their chains using a GET request
@@ -448,7 +442,7 @@ def listen():
         elif data[0] == 'peernodes':
             conn.send(dumps(PEER_NODES).encode())
             if (data[1][0], data[1][1]) not in PEER_NODES:
-                PEER_NODES.append( (data[1][0], data[1][1]))
+                PEER_NODES.append( [data[1][0], data[1][1]])
 
         conn.close()
 
@@ -462,7 +456,7 @@ def request(url, option, payload = None):
         qSocket = socket.socket()
         qSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         qSocket.settimeout(2)
-        qSocket.connect(url)
+        qSocket.connect((url[0],url[1]))
         qSocket.send(dumps((option, payload)).encode())
         data = b''
 
@@ -531,6 +525,24 @@ def getpendingtransactions():
         txs = NODE_PENDING_TRANSACTIONS
     return txs
 
+def updatepeernodes():
+    global PEER_NODES
+    while True:
+        peerlist = []
+        for node_url in PEER_NODES:
+            data = request(node_url, 'peernodes', (MINER_IP, MINER_PORT))
+            if data:
+                peerlist = data
+            if peerlist:
+                with mutex:
+                    PEER_NODES = PEER_NODES + peerlist
+                    output = []
+                    for item in PEER_NODES:
+                        if item not in output:
+                            output.append(item)
+                    PEER_NODES = output
+        time.sleep(15)
+
 def validate_signature(public_key,signature,message):
     """Verify if the signature is correct. This is used to prove if
     it's you (and not someon else) trying to do a transaction with your
@@ -582,3 +594,10 @@ if __name__ == '__main__':
     #Start server to recieve transactions
     p2 = Thread(target = listen)
     p2.start()
+
+    p3 = Thread(target = updatepeernodes)
+    p3.start()
+
+    p1.join()
+    p2.join()
+    p3.join()
