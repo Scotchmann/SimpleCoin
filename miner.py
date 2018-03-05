@@ -606,7 +606,7 @@ def initialize_miner(args):
 if __name__ == '__main__':
     error = initialize_miner(sys.argv)
     if error:
-        return
+        exit()
 
     freeze_support()
     welcome_msg()
