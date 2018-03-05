@@ -570,6 +570,7 @@ def initialize_miner(args):
     global MINER_IP, MINER_PORT, BLOCKCHAIN, PEER_NODES, workersnumber
     open('ledger.txt', 'w').close()
     BLOCKCHAIN.append(create_genesis_block())
+    error = False
     if MINER_IP == '':
         MINER_IP = socket.gethostbyname(socket.getfqdn())
     if MINER_PORT == 0:
@@ -578,28 +579,35 @@ def initialize_miner(args):
 
         i = 0
         for item in args:
-            if item == '-p':
+            if item == '-pn' or item == '--processes':
                 try:
                     workersnumber = int(args[(i+1)])
                 except:
                     print('Argument "workersnumber" is not specified correctly')
-            elif item == '-n':
+                    error = True
+            elif item == '-rn' or item == '--remotenode':
                 try:
                     node = str(args[i+1]).split(':')
                     PEER_NODES.append([node[0],int(node[1])])
                 except:
                     print('Argument "node" is not specified correctly')
-            elif item == '-h':
+                    error = True
+            elif item == '-lh' or item == '--localhost':
                 try:
                     node = str(args[i+1]).split(':')
                     MINER_IP = node[0]
                     MINER_PORT = int(node[1])
                 except:
                     print('Argument "host" is not specified correctly')
+                    error = True
             i += 1
+    return error
 
 if __name__ == '__main__':
-    initialize_miner(sys.argv)
+    error = initialize_miner(sys.argv)
+    if error:
+        return
+
     freeze_support()
     welcome_msg()
     #Start mining
