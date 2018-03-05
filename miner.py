@@ -21,7 +21,7 @@ logging.basicConfig()
 logging.disable(logging.ERROR)
 
 from miner_config import MINER_IP, MINER_PORT, MINER_ADDRESS, PEER_NODES
-workersnumber = 1
+WORKERSNUMBER = 1
 # Node's blockchain copy
 BLOCKCHAIN = []
 
@@ -34,7 +34,7 @@ NODE_PENDING_TRANSACTIONS = []
 
 mutex = Lock()
 
-target = '000000'
+TARGET = '000000'
 
 class Block:
     def __init__(self, index, timestamp, data, previous_hash, prover):
@@ -121,8 +121,7 @@ def proof_of_work(last_hash, b_len, prover, allspeed, target, incrementor = 0):
 def mine(blockchain,node_pending_transactions, workersnumber = 1):
     global BLOCKCHAIN
     global NODE_PENDING_TRANSACTIONS
-    #with mutex:
-    #    BLOCKCHAIN = blockchain
+
     NODE_PENDING_TRANSACTIONS = node_pending_transactions
 
     while True:
@@ -149,7 +148,7 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
         seed = random.randrange(0, 500000000)
         for i in range(workersnumber):
             seed += 500000000
-            p = Process(target = proof_of_work, args = (last_hash,b_len,foundedprover,allspeed,target,seed))
+            p = Process(target = proof_of_work, args = (last_hash,b_len,foundedprover,allspeed,TARGET,seed))
             p.start()
             workers.append(p)
 
@@ -161,7 +160,7 @@ def mine(blockchain,node_pending_transactions, workersnumber = 1):
                 time_printed = False
 
             if (time_printed == False and timefound != 0 and timefound % 30 == 0):
-                print('allspeed - '+str(int(allspeed.value)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
+                print('cumulative speed - '+str(int(allspeed.value)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
                 time_printed = True
                 allspeed.value = 0
 
@@ -305,7 +304,7 @@ def validate_blockchain(alien_chain, my_chain):
         sha = hasher.sha256()
         sha.update( (str(alien_chain[index].previous_hash) + str(alien_chain[index].prover)).encode('utf-8'))
         digest = str(sha.hexdigest())
-        if (digest[:len(target)] != target):
+        if (digest[:len(TARGET)] != TARGET):
             print('digest does not match')
             return False
         # 2st - verification of double spending
@@ -501,7 +500,7 @@ def getbalance(wallet):
             wallet_found = True
             return data[1]
     if wallet_found == False:
-        return "0"
+        return '0'
 
 def getnewtransaction(new_txion):
     global NODE_PENDING_TRANSACTIONS
@@ -567,7 +566,7 @@ def welcome_msg():
     print('Miner has been started at '+str(MINER_IP)+':'+str(MINER_PORT)+' host! Good luck!\n')
 
 def initialize_miner(args):
-    global MINER_IP, MINER_PORT, BLOCKCHAIN, PEER_NODES, workersnumber
+    global MINER_IP, MINER_PORT, BLOCKCHAIN, PEER_NODES, WORKERSNUMBER
     open('ledger.txt', 'w').close()
     BLOCKCHAIN.append(create_genesis_block())
     error = False
@@ -581,7 +580,7 @@ def initialize_miner(args):
         for item in args:
             if item == '-pn' or item == '--processes':
                 try:
-                    workersnumber = int(args[(i+1)])
+                    WORKERSNUMBER = int(args[(i+1)])
                 except:
                     print('Argument "workersnumber" is not specified correctly')
                     error = True
@@ -613,7 +612,7 @@ if __name__ == '__main__':
     #Start mining
     print('length of BLOCKCHAIN: '+ str(len(BLOCKCHAIN)))
 
-    p1 = Thread(target = mine, args=(BLOCKCHAIN,NODE_PENDING_TRANSACTIONS, workersnumber))
+    p1 = Thread(target = mine, args=(BLOCKCHAIN,NODE_PENDING_TRANSACTIONS, WORKERSNUMBER))
     p1.start()
 
     #Start server to recieve transactions
