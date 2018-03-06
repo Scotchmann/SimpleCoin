@@ -103,7 +103,7 @@ def proof_of_work(last_hash, b_len, prover, allspeed, target, incrementor = 0):
             time_printed = False
 
         if (time_printed == False and timefound != 0 and timefound % 29 == 0):
-            print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
+            #print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
             time_printed = True
             allspeed.value += i/timefound
 
