@@ -230,7 +230,7 @@ def find_new_chains():
     peerlist = []
 
     for node_url in PEER_NODES:
-        if node_url == (MINER_IP, MINER_PORT):
+        if node_url[0] == [MINER_IP, MINER_PORT]:
             continue
         # Get their chains using a GET request
         try:
@@ -238,14 +238,17 @@ def find_new_chains():
             alien_chain_len = 0
             with eventlet.Timeout(5, False):
                 try:
-                    alien_chain_len = int(request(node_url, 'length'))
+                    alien_chain_len = int(request(node_url[0], 'length'))
                 except:
+                    if node_url[1] >= 5:
+                        PEER_NODES.remove(node_url)
+                    node_url[1] += 1
                     alien_chain_len = 0
 
             # Verify other node block is correct
             if alien_chain_len > longest_chain_len:
                 longest_chain_len = alien_chain_len
-                longest_chain_ip  = node_url
+                longest_chain_ip  = node_url[0]
 
         except Exception:
             #print('Connection to '+node_url+' failed')
@@ -443,7 +446,7 @@ def listen():
         elif data[0] == 'peernodes':
             conn.send(dumps(PEER_NODES).encode())
             if (data[1][0], data[1][1]) not in PEER_NODES:
-                PEER_NODES.append( [data[1][0], data[1][1]])
+                PEER_NODES.append( [ [data[1][0], data[1][1]], 0 ] )
 
         conn.close()
 
@@ -532,7 +535,7 @@ def updatepeernodes():
     while True:
         peerlist = []
         for node_url in PEER_NODES:
-            data = request(node_url, 'peernodes', (MINER_IP, MINER_PORT))
+            data = request(node_url[0], 'peernodes', (MINER_IP, MINER_PORT))
             if data:
                 peerlist = data
             if peerlist:
@@ -593,7 +596,7 @@ def initialize_miner(args):
             elif item == '-rn' or item == '--remotenode':
                 try:
                     node = str(args[i+1]).split(':')
-                    PEER_NODES.append([node[0],int(node[1])])
+                    PEER_NODES.append(  [  [node[0],int(node[1])] , 0 ] )
                 except:
                     print('Argument "node" is not specified correctly')
                     error = True
