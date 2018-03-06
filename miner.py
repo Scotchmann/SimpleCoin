@@ -525,6 +525,7 @@ def getpendingtransactions():
     return txs
 
 def updatepeernodes():
+    open('PEER_NODES.txt', 'w').close()
     global PEER_NODES
     while True:
         peerlist = []
@@ -540,6 +541,9 @@ def updatepeernodes():
                         if item not in output:
                             output.append(item)
                     PEER_NODES = output
+        f = open('PEER_NODES.txt', 'w')
+        f.write(str(PEER_NODES))
+        f.close()
         time.sleep(15)
 
 def validate_signature(public_key,signature,message):
