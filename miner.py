@@ -34,7 +34,7 @@ NODE_PENDING_TRANSACTIONS = []
 
 mutex = Lock()
 
-TARGET = '0000000'
+TARGET = '000000'
 
 class Block:
     def __init__(self, index, timestamp, data, previous_hash, prover):
@@ -230,7 +230,8 @@ def find_new_chains():
     peerlist = []
 
     for node_url in PEER_NODES:
-        if node_url[0] == [MINER_IP, MINER_PORT]:
+        #print('!! '+str(node_url[0]))
+        if node_url[0] == MINER_IP and node_url[1] == MINER_PORT:
             continue
         # Get their chains using a GET request
         try:
@@ -238,17 +239,14 @@ def find_new_chains():
             alien_chain_len = 0
             with eventlet.Timeout(5, False):
                 try:
-                    alien_chain_len = int(request(node_url[0], 'length'))
+                    alien_chain_len = int(request(node_url, 'length'))
                 except:
-                    if node_url[1] >= 5:
-                        PEER_NODES.remove(node_url)
-                    node_url[1] += 1
                     alien_chain_len = 0
 
             # Verify other node block is correct
             if alien_chain_len > longest_chain_len:
                 longest_chain_len = alien_chain_len
-                longest_chain_ip  = node_url[0]
+                longest_chain_ip  = node_url
 
         except Exception:
             #print('Connection to '+node_url+' failed')
@@ -446,12 +444,11 @@ def listen():
         elif data[0] == 'peernodes':
             conn.send(dumps(PEER_NODES).encode())
             if (data[1][0], data[1][1]) not in PEER_NODES:
-                PEER_NODES.append( [ [data[1][0], data[1][1]], 0 ] )
+                PEER_NODES.append( [ data[1][0], data[1][1]] )
 
         conn.close()
 
 def request(url, option, payload = None):
-
     if option is None or option == '':
         return None
 
@@ -535,7 +532,7 @@ def updatepeernodes():
     while True:
         peerlist = []
         for node_url in PEER_NODES:
-            data = request(node_url[0], 'peernodes', (MINER_IP, MINER_PORT))
+            data = request(node_url, 'peernodes', (MINER_IP, MINER_PORT))
             if data:
                 peerlist = data
             if peerlist:
@@ -596,7 +593,7 @@ def initialize_miner(args):
             elif item == '-rn' or item == '--remotenode':
                 try:
                     node = str(args[i+1]).split(':')
-                    PEER_NODES.append(  [  [node[0],int(node[1])] , 0 ] )
+                    PEER_NODES.append([node[0],int(node[1])])
                 except:
                     print('Argument "node" is not specified correctly')
                     error = True
