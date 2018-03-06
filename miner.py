@@ -34,7 +34,7 @@ NODE_PENDING_TRANSACTIONS = []
 
 mutex = Lock()
 
-TARGET = '000000'
+TARGET = '0000000'
 
 class Block:
     def __init__(self, index, timestamp, data, previous_hash, prover):
@@ -103,7 +103,7 @@ def proof_of_work(last_hash, b_len, prover, allspeed, target, incrementor = 0):
             time_printed = False
 
         if (time_printed == False and timefound != 0 and timefound % 29 == 0):
-            #print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
+            print('speed - '+str(int(i/timefound)/1000)+' KH\s' + ', blockchain\'s length is ' + str(b_len) +'\n')
             time_printed = True
             allspeed.value += i/timefound
 
@@ -248,7 +248,8 @@ def find_new_chains():
                 longest_chain_ip  = node_url
 
         except Exception:
-            print('Connection to '+node_url+' failed')
+            #print('Connection to '+node_url+' failed')
+            pass
 
     if longest_chain_ip[0] != MINER_IP or longest_chain_ip[1] != MINER_PORT:
         longest_chain = request(longest_chain_ip, 'chain')
@@ -477,7 +478,8 @@ def request(url, option, payload = None):
         return data
 
     except:
-        print('Connection to '+str(url[0])+':'+str(url[1]) + ' failed.')
+        #print('Connection to '+str(url[0])+':'+str(url[1]) + ' failed.')
+        pass
 
 def getchain():
     global BLOCKCHAIN
