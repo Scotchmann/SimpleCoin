@@ -65,7 +65,7 @@ class Block:
     def hash_block(self):
         """Creates the unique hash for the block. It uses sha256."""
         sha = hasher.sha256()
-        sha.update((str(self.index) + str(self.timestamp) + str(self.data) + str(self.previous_hash) + str(self.prover)).encode('utf-8'))
+        sha.update((str(self.index) + str(self.timestamp) + str(self.data) + str(self.previous_hash) + str(self.prover)).encode())
         return sha.hexdigest()
 
 def create_genesis_block():
@@ -95,7 +95,7 @@ def proof_of_work(last_hash, b_len, prover, allspeed, target, incrementor = 0):
         incrementor += 1
         i += 1
         sha = hasher.sha256()
-        sha.update( (bhash + str(incrementor)).encode('utf-8'))
+        sha.update( (bhash + str(incrementor)).encode())
         digest = str(sha.hexdigest())
 
         if timefound != int(time.time()-start_time):
@@ -304,7 +304,7 @@ def validate_blockchain(alien_chain, my_chain):
             continue
         # 1st - verification integrity
         sha = hasher.sha256()
-        sha.update( (str(alien_chain[index].previous_hash) + str(alien_chain[index].prover)).encode('utf-8'))
+        sha.update( (str(alien_chain[index].previous_hash) + str(alien_chain[index].prover)).encode())
         digest = str(sha.hexdigest())
         if (digest[:len(TARGET)] != TARGET):
             print('digest does not match')
